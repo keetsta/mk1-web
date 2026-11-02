@@ -1,6 +1,6 @@
 /* Where the card's firmware comes from.
    1. A manifest on the site itself (the deploy mirrors the latest GitHub release into it), so the page
-      downloads from its own origin: { "version": "0.2.0", "date": "2026-11-12", "url": "mc1-0.2.0.uf2",
+      downloads from its own origin: { "version": "0.2.0", "date": "2026-11-12", "url": "mk1-0.2.0.uf2",
       "sha256": "…", "page": "https://github.com/…/releases/tag/v0.2.0" }, url relative to the manifest.
    2. Else GitHub's releases API for owner/repo, the asset ending in .uf2 (needs a public repo; GitHub may
       refuse the download to a page, then the visitor gets the release page and installs from a file). */

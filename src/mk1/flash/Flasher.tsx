@@ -25,7 +25,7 @@ type Step = "fetch" | "boot" | "pick" | "write" | "done" | "fail" | "manual";
 type Job = { label: string; file: Uint8Array | null; step: Step; progress: number; error: string | null; page: string | null };
 type Latest = { s: "loading" } | { s: "none" } | { s: "error"; m: string } | { s: "ok"; r: Release };
 
-const UDEV = `echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", MODE="0666"' | sudo tee /etc/udev/rules.d/60-mc1.rules && sudo udevadm control --reload-rules`;
+const UDEV = `echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", MODE="0666"' | sudo tee /etc/udev/rules.d/60-mk1.rules && sudo udevadm control --reload-rules`;
 
 async function bootDevice(): Promise<USBDevice | null> {
   const all = await navigator.usb.getDevices();
@@ -123,32 +123,32 @@ export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFl
   const newer = rel && onCard ? compareVersions(rel.version, onCard) > 0 : false;
 
   return (
-    <section className="mc1-flash card" aria-labelledby="mc1-flash-title">
-      <div className="mc1-flash-head">
-        <h2 className="eyebrow" id="mc1-flash-title"><LuCpu size={17} /> firmware</h2>
-        <span className="mc1-pill">
+    <section className="mk1-flash card" aria-labelledby="mk1-flash-title">
+      <div className="mk1-flash-head">
+        <h2 className="eyebrow" id="mk1-flash-title"><LuCpu size={17} /> firmware</h2>
+        <span className="mk1-pill">
           on the card <span className="mono">{onCard ?? "----"}</span>
         </span>
       </div>
 
-      <div className="mc1-release">
-        {latest.s === "loading" && <p className="mc1-quiet"><LuLoaderCircle className="mc1-spin" size={16} /> looking for the latest release</p>}
-        {latest.s === "none" && <p className="mc1-quiet">no firmware released yet. a .uf2 of your own still goes in below.</p>}
-        {latest.s === "error" && <p className="mc1-quiet">the latest release didn't load: {latest.m}</p>}
+      <div className="mk1-release">
+        {latest.s === "loading" && <p className="mk1-quiet"><LuLoaderCircle className="mk1-spin" size={16} /> looking for the latest release</p>}
+        {latest.s === "none" && <p className="mk1-quiet">no firmware released yet. a .uf2 of your own still goes in below.</p>}
+        {latest.s === "error" && <p className="mk1-quiet">the latest release didn't load: {latest.m}</p>}
         {rel && (
           <>
             <div>
-              <p className="mc1-release-name">
+              <p className="mk1-release-name">
                 latest release <span className="mono">{rel.version}</span>
-                {day(rel.date) && <span className="mc1-quiet"> · {day(rel.date)}</span>}
+                {day(rel.date) && <span className="mk1-quiet"> · {day(rel.date)}</span>}
               </p>
-              <p className="mc1-quiet">
+              <p className="mk1-quiet">
                 {onCard === null ? "connect the card to compare" : newer ? "newer than the card's" : "the card has it"}
               </p>
             </div>
             <button
               type="button"
-              className={newer ? "mc1-btn primary" : "mc1-btn"}
+              className={newer ? "mk1-btn primary" : "mk1-btn"}
               disabled={busy}
               onClick={() => install(rel.version, () => download(rel), rel.page)}
             >
@@ -159,7 +159,7 @@ export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFl
       </div>
 
       <div
-        className="mc1-drop"
+        className="mk1-drop"
         data-over={over || undefined}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
         onDragLeave={() => setOver(false)}
@@ -168,47 +168,47 @@ export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFl
         <LuFileUp size={20} />
         <p>
           your own firmware: drop a <span className="mono">.uf2</span> here or{" "}
-          <button type="button" className="mc1-link" disabled={busy} onClick={() => picker.current?.click()}>choose a file</button>
+          <button type="button" className="mk1-link" disabled={busy} onClick={() => picker.current?.click()}>choose a file</button>
         </p>
         <input ref={picker} type="file" accept=".uf2" hidden onChange={(e) => { fromFile(e.target.files?.[0]); e.target.value = ""; }} />
       </div>
 
       {job && (
-        <div className="mc1-job" aria-live="polite">
-          <p className="mc1-job-title">installing <span className="mono">{job.label}</span></p>
-          {job.step === "fetch" && <p className="mc1-quiet"><LuLoaderCircle className="mc1-spin" size={16} /> getting the firmware</p>}
-          {job.step === "boot" && <p className="mc1-quiet"><LuLoaderCircle className="mc1-spin" size={16} /> restarting the card into its bootloader</p>}
+        <div className="mk1-job" aria-live="polite">
+          <p className="mk1-job-title">installing <span className="mono">{job.label}</span></p>
+          {job.step === "fetch" && <p className="mk1-quiet"><LuLoaderCircle className="mk1-spin" size={16} /> getting the firmware</p>}
+          {job.step === "boot" && <p className="mk1-quiet"><LuLoaderCircle className="mk1-spin" size={16} /> restarting the card into its bootloader</p>}
           {job.step === "pick" && (
-            <div className="mc1-job-pick">
+            <div className="mk1-job-pick">
               <p>
                 {connected
                   ? "the card restarted into its bootloader. pick it in the browser's list: “RP2350 Boot”."
                   : "unplug the card, hold its button and plug it back in, then pick “RP2350 Boot” in the browser's list."}
               </p>
-              <button type="button" className="mc1-btn primary" onClick={pick}>pick the bootloader</button>
+              <button type="button" className="mk1-btn primary" onClick={pick}>pick the bootloader</button>
               {desk === "linux" && (
-                <p className="mc1-quiet">
+                <p className="mk1-quiet">
                   not in the list? let the browser reach it, then plug the card in again:<Copyable text={UDEV} />
                 </p>
               )}
             </div>
           )}
           {job.step === "write" && (
-            <div className="mc1-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.progress * 100)}>
+            <div className="mk1-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.progress * 100)}>
               <div style={{ transform: `scaleX(${job.progress})` }} />
               <span className="mono">{Math.round(job.progress * 100)}%</span>
             </div>
           )}
-          {job.step === "done" && <p className="mc1-ok"><LuCheck size={17} /> done. the card restarts with the new firmware.</p>}
+          {job.step === "done" && <p className="mk1-ok"><LuCheck size={17} /> done. the card restarts with the new firmware.</p>}
           {job.step === "fail" && (
-            <p className="mc1-bad">
+            <p className="mk1-bad">
               <LuCircleAlert size={17} /> {job.error}
               {job.page && <> · <a href={job.page} target="_blank" rel="noreferrer">the release page</a></>}
             </p>
           )}
           {(job.step === "manual" || job.step === "fail") && job.file && (
-            <ol className="mc1-manual">
-              <li>{fileUrl && <a href={fileUrl} download={job.label.endsWith(".uf2") ? job.label : `mc1-${job.label}.uf2`}>save the .uf2</a>}{fileUrl ? " (if you don't have it yet)" : ""}</li>
+            <ol className="mk1-manual">
+              <li>{fileUrl && <a href={fileUrl} download={job.label.endsWith(".uf2") ? job.label : `mk1-${job.label}.uf2`}>save the .uf2</a>}{fileUrl ? " (if you don't have it yet)" : ""}</li>
               <li>unplug the card, hold its button and plug it back in: a drive called <span className="mono">RP2350</span> shows up</li>
               <li>drop the .uf2 onto it. the card restarts with the new firmware by itself</li>
             </ol>

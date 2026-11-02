@@ -1,11 +1,11 @@
-.mc1-term {
+.mk1-term {
   height: clamp(320px, 52vh, 460px);
   padding: 4px 0 0 4px;
 }
-.mc1-term .xterm {
+.mk1-term .xterm {
   height: 100%;
 }
-.mc1-term .xterm-viewport {
+.mk1-term .xterm-viewport {
   background: transparent !important;
   scrollbar-width: thin;
   scrollbar-color: var(--line-3) transparent;

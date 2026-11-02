@@ -10,12 +10,12 @@ import { LinkError, openCard, pickCard, serialTrouble, type CardLink, type Troub
 import type { Shell } from "./shell/core";
 import { loadShell } from "./shell/load";
 import { Term, type TermHandle } from "./term/Term";
-import "./mc1.css";
+import "./mk1.css";
 
 type Mode = "idle" | "try" | "card";
 
 /** the shell's saved state in try it (unlocked chapters, the program), as the card keeps it in flash */
-const STATE = "keetsta:mc1";
+const STATE = "keetsta:mk1";
 const loadState = (n: number) => {
   try {
     const b64 = localStorage.getItem(STATE);
@@ -32,11 +32,11 @@ const saveState = (s: Uint8Array) => {
   } catch { /* storage blocked: the progress lasts the visit */ }
 };
 
-const DEFAULT_FIRMWARE: FirmwareSource = { manifest: "/mc1/firmware/latest.json", github: "keetsta/mc1-shell" };
+const DEFAULT_FIRMWARE: FirmwareSource = { manifest: "/mk1/firmware/latest.json", github: "keetsta/mk1-shell" };
 const blank = () => new Uint16Array(9);
 
-/** keetsta.me/mc1: the card's shell over USB, its firmware, and the same shell running right here */
-export function Mc1({ firmware = DEFAULT_FIRMWARE }: { firmware?: FirmwareSource }) {
+/** keetsta.me/mk1: the card's shell over USB, its firmware, and the same shell running right here */
+export function Mk1({ firmware = DEFAULT_FIRMWARE }: { firmware?: FirmwareSource }) {
   const os = useMemo(detectOs, []);
   const [mode, setMode] = useState<Mode>("idle");
   const [rows, setRows] = useState<Uint16Array>(blank);
@@ -204,50 +204,50 @@ export function Mc1({ firmware = DEFAULT_FIRMWARE }: { firmware?: FirmwareSource
     : "nothing connected";
 
   return (
-    <section className="mc1">
-      <header className="mc1-head">
-        <h1>mc-1</h1>
+    <section className="mk1">
+      <header className="mk1-head">
+        <h1>mk-1</h1>
         <p>
           a business card with a shell. plug it in over usb-c and write code for a chip that doesn't exist: it lights
           the card's real leds. no card at hand? the same shell runs right here.
         </p>
       </header>
 
-      <div className="mc1-stage">
+      <div className="mk1-stage">
         <CardPreview rows={rows} pressable={mode === "try"} pressed={pressed} onPress={setPressed} />
         {mode === "try" && (
-          <div className="mc1-controls">
-            <label className="mc1-light">
+          <div className="mk1-controls">
+            <label className="mk1-light">
               <LuSun size={17} />
               <span>light</span>
               <input type="range" min={0} max={1023} step={1} value={lux} onChange={(e) => setLux(Number(e.target.value))} />
-              <span className="mono mc1-light-value">{lux}</span>
+              <span className="mono mk1-light-value">{lux}</span>
             </label>
-            <button type="button" className="mc1-icon-btn" onClick={() => setSound((s) => !s)} aria-label={sound ? "mute the buzzer" : "unmute the buzzer"} aria-pressed={!sound}>
+            <button type="button" className="mk1-icon-btn" onClick={() => setSound((s) => !s)} aria-label={sound ? "mute the buzzer" : "unmute the buzzer"} aria-pressed={!sound}>
               {sound ? <LuVolume2 size={18} /> : <LuVolumeX size={18} />}
             </button>
-            <p className="mc1-hint">
+            <p className="mk1-hint">
               {running ? "space holds the card's button, + and − change the light" : "the card's button works too: press it"}
             </p>
           </div>
         )}
       </div>
 
-      <div className="mc1-actions">
+      <div className="mk1-actions">
         {mode === "card" ? (
-          <button type="button" className="mc1-btn" onClick={closeCard}><LuUnplug size={17} /> disconnect</button>
+          <button type="button" className="mk1-btn" onClick={closeCard}><LuUnplug size={17} /> disconnect</button>
         ) : (
-          <button type="button" className="mc1-btn primary" onClick={connectCard} disabled={connecting}>
-            {connecting ? <LuLoaderCircle className="mc1-spin" size={17} /> : <LuUsb size={17} />} connect the card
+          <button type="button" className="mk1-btn primary" onClick={connectCard} disabled={connecting}>
+            {connecting ? <LuLoaderCircle className="mk1-spin" size={17} /> : <LuUsb size={17} />} connect the card
           </button>
         )}
-        <button type="button" className="mc1-btn" onClick={startTry} aria-pressed={mode === "try"}>
+        <button type="button" className="mk1-btn" onClick={startTry} aria-pressed={mode === "try"}>
           <LuPlay size={17} /> try it here
         </button>
-        <button type="button" className="mc1-btn" onClick={() => setFlashOpen((o) => !o)} aria-expanded={flashOpen}>
+        <button type="button" className="mk1-btn" onClick={() => setFlashOpen((o) => !o)} aria-expanded={flashOpen}>
           <LuCpu size={17} /> firmware
         </button>
-        <span className="mc1-pill mc1-status" data-mode={mode}>{status}</span>
+        <span className="mk1-pill mk1-status" data-mode={mode}>{status}</span>
       </div>
 
       {trouble && <ConnectHelp trouble={trouble} os={os} />}
@@ -264,7 +264,7 @@ export function Mc1({ firmware = DEFAULT_FIRMWARE }: { firmware?: FirmwareSource
         />
       )}
 
-      <div className="card mc1-term-card">
+      <div className="card mk1-term-card">
         <Term ref={term} onData={onData} onKey={onKey} label="the card's shell" />
       </div>
     </section>

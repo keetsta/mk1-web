@@ -1,4 +1,4 @@
-import wasmUrl from "./mc1-shell.wasm?url";
+import wasmUrl from "./mk1-shell.wasm?url";
 import { createShell, type Hal, type Shell } from "./core";
 
 /** fetches the shell's WebAssembly (content-hashed by Vite) and starts it */

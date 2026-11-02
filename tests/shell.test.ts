@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createShell } from "../src/mc1/shell/core.ts";
+import { createShell } from "../src/mk1/shell/core.ts";
 
-const wasm = readFileSync(new URL("../src/mc1/shell/mc1-shell.wasm", import.meta.url));
+const wasm = readFileSync(new URL("../src/mk1/shell/mk1-shell.wasm", import.meta.url));
 
 async function boot() {
   let out = "";

@@ -1,21 +1,21 @@
-.mc1-help {
+.mk1-help {
   padding: var(--card-pad);
   display: grid;
   gap: 16px;
 }
-.mc1-help-lead {
+.mk1-help-lead {
   display: flex;
   gap: 10px;
   align-items: flex-start;
   color: var(--ink-2);
   font-size: 15.5px;
 }
-.mc1-help-lead svg {
+.mk1-help-lead svg {
   flex: none;
   margin-top: 3px;
   color: var(--orange-ink);
 }
-.mc1-tabs {
+.mk1-tabs {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
@@ -24,7 +24,7 @@
   background: var(--card-2);
   justify-self: start;
 }
-.mc1-tabs button {
+.mk1-tabs button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -36,24 +36,24 @@
   color: var(--muted);
   transition: background 180ms var(--ease), color 180ms var(--ease);
 }
-.mc1-tabs button[aria-selected="true"] {
+.mk1-tabs button[aria-selected="true"] {
   background: var(--card);
   color: var(--ink);
   box-shadow: var(--sh-xs);
 }
-.mc1-steps ol {
+.mk1-steps ol {
   display: grid;
   gap: 12px;
   padding-left: 22px;
   color: var(--ink-2);
   font-size: 15px;
 }
-.mc1-steps li::marker {
+.mk1-steps li::marker {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 13px;
 }
-.mc1-steps a {
+.mk1-steps a {
   color: var(--ink);
   text-decoration: underline;
   text-decoration-color: var(--line-3);
@@ -69,7 +69,7 @@ kbd {
   background: var(--card-2);
   color: var(--ink);
 }
-.mc1-cmd {
+.mk1-cmd {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -79,7 +79,7 @@ kbd {
   border-radius: var(--r-sm);
   background: var(--card-2);
 }
-.mc1-cmd code {
+.mk1-cmd code {
   flex: 1;
   min-width: 0;
   overflow-x: auto;
@@ -88,7 +88,7 @@ kbd {
   color: var(--ink);
   scrollbar-width: none;
 }
-.mc1-cmd button {
+.mk1-cmd button {
   flex: none;
   display: grid;
   place-items: center;
@@ -98,7 +98,7 @@ kbd {
   color: var(--muted);
   transition: background 180ms var(--ease), color 180ms var(--ease);
 }
-.mc1-cmd button:hover {
+.mk1-cmd button:hover {
   background: var(--card-3);
   color: var(--ink);
 }

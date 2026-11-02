@@ -86,5 +86,5 @@ export function Term({ ref, onData, onKey, label }: Props) {
     };
   }, [label]);
 
-  return <div className="mc1-term" ref={box} />;
+  return <div className="mk1-term" ref={box} />;
 }

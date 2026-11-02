@@ -12,7 +12,7 @@ export function Copyable({ text }: { text: string }) {
     } catch { /* the text is selectable anyway */ }
   };
   return (
-    <div className="mc1-cmd">
+    <div className="mk1-cmd">
       <code className="mono">{text}</code>
       <button type="button" onClick={copy} aria-label={done ? "copied" : "copy"} title={done ? "copied" : "copy"}>
         {done ? <LuCheck size={16} /> : <LuCopy size={16} />}

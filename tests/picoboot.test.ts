@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CMD, encodeCommand, Picoboot, rangeArgs } from "../src/mc1/flash/picoboot.ts";
-import { FLASH_BASE, SECTOR, type Image } from "../src/mc1/flash/uf2.ts";
+import { CMD, encodeCommand, Picoboot, rangeArgs } from "../src/mk1/flash/picoboot.ts";
+import { FLASH_BASE, SECTOR, type Image } from "../src/mk1/flash/uf2.ts";
 
 test("a command packet is 32 bytes: magic, token, id, args size, transfer, args", () => {
   const p = encodeCommand(7, CMD.write, rangeArgs(0x10001000, 4096), 4096);

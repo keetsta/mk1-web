@@ -1,4 +1,4 @@
-/* The card's shell compiled to WebAssembly (wasm/hal_wasm.c + the mc1-shell core): the same code the
+/* The card's shell compiled to WebAssembly (wasm/hal_wasm.c + the mk1-shell core): the same code the
    firmware runs, here with a JS HAL. No Vite imports, so tests can load it under Node. */
 
 export type Hal = {
@@ -38,7 +38,7 @@ export async function createShell(wasm: BufferSource, hal: Hal): Promise<Shell> 
   let hz = 0;
   const bytes = (p: number, n: number) => new Uint8Array(memory!.buffer, p, n);
   const { instance } = await WebAssembly.instantiate(wasm, {
-    mc1: {
+    mk1: {
       write: (p: number, n: number) => hal.write(bytes(p, n).slice()),
       matrix: (p: number) => {
         rows = new Uint16Array(memory!.buffer.slice(p, p + 18));

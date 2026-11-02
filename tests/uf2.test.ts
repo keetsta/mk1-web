@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FAMILY, parseUf2, Uf2Error } from "../src/mc1/flash/uf2.ts";
+import { FAMILY, parseUf2, Uf2Error } from "../src/mk1/flash/uf2.ts";
 
 function block(addr: number, family: number, fill: number, flags = 0x2000): Uint8Array {
   const b = new Uint8Array(512);

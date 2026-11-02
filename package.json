@@ -1,16 +1,16 @@
 {
-  "name": "mc1-web",
+  "name": "mk1-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "keetsta.me/mc1: the MC-1 card's shell in the browser. Terminal over Web Serial, firmware over WebUSB, and try-it with the shell itself in WebAssembly",
+  "description": "keetsta.me/mk1: the MK-1 card's shell in the browser. Terminal over Web Serial, firmware over WebUSB, and try-it with the shell itself in WebAssembly",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "node --test tests/",
     "wasm": "sh wasm/build.sh",
-    "geometry": "python3 tools/card_geometry.py ../mc1-card src/mc1/preview/geometry.ts"
+    "geometry": "python3 tools/card_geometry.py ../mk1-card src/mk1/preview/geometry.ts"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",

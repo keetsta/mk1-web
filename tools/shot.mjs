@@ -34,14 +34,14 @@ for (const theme of ["light", "dark"]) {
   await settle(p, 300);
   await p.keyboard.down(" ");
   await settle(p, 300);
-  await p.locator(".mc1-stage").screenshot({ path: `${out}/${theme}-try-lit.png` });
+  await p.locator(".mk1-stage").screenshot({ path: `${out}/${theme}-try-lit.png` });
   await p.keyboard.up(" ");
 
   // the firmware panel (no release yet: the manifest isn't there and GitHub is stubbed to 404)
   await p.keyboard.press("Control+C");
   await p.getByRole("button", { name: "firmware" }).click();
   await settle(p, 600);
-  await p.locator(".mc1-flash").screenshot({ path: `${out}/${theme}-firmware.png` });
+  await p.locator(".mk1-flash").screenshot({ path: `${out}/${theme}-firmware.png` });
   await p.context().close();
 
   // a browser without Web Serial: the terminal steps for the visitor's OS
@@ -49,7 +49,7 @@ for (const theme of ["light", "dark"]) {
   await p.goto(url(`?theme=${theme}`));
   await p.getByRole("button", { name: "connect the card" }).click();
   await settle(p, 400);
-  await p.locator(".mc1-help").screenshot({ path: `${out}/${theme}-help.png` });
+  await p.locator(".mk1-help").screenshot({ path: `${out}/${theme}-help.png` });
   await p.context().close();
 }
 

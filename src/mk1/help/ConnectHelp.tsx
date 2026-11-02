@@ -53,14 +53,14 @@ export function ConnectHelp({ trouble, os }: { trouble: Trouble; os: Os }) {
   const [desk, setDesk] = useState<Desk>(deskOf(os));
   const phone = os === "ios" || os === "android";
   return (
-    <section className="mc1-help card" aria-live="polite">
-      <p className="mc1-help-lead">
+    <section className="mk1-help card" aria-live="polite">
+      <p className="mk1-help-lead">
         <LuCircleAlert size={18} />
         <span>
           {phone ? "a phone can't open the card's shell: plug the card into a computer. you can still try it here." : LEAD[trouble]}
         </span>
       </p>
-      <div className="mc1-tabs" role="tablist" aria-label="your computer">
+      <div className="mk1-tabs" role="tablist" aria-label="your computer">
         {(Object.keys(NAMES) as Desk[]).map((d) => (
           <button key={d} type="button" role="tab" aria-selected={d === desk} onClick={() => setDesk(d)}>
             {d === desk && <LuTerminal size={15} />}
@@ -68,7 +68,7 @@ export function ConnectHelp({ trouble, os }: { trouble: Trouble; os: Os }) {
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="mc1-steps">{STEPS[desk]}</div>
+      <div role="tabpanel" className="mk1-steps">{STEPS[desk]}</div>
     </section>
   );
 }

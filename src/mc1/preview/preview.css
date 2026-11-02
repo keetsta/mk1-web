@@ -1,0 +1,106 @@
+/* the card is a real object lying on the page: white solder mask, black silkscreen, red-orange LEDs.
+   No glow (the site's rule): a lit LED is its lens in flat colour, the way it reads in daylight */
+.mc1-card {
+  --mc1-board: #fbfaf6;
+  --mc1-board-edge: #e4dfd3;
+  --mc1-silk: #1e1c19;
+  --mc1-led-body: #f1eee7;
+  --mc1-led-edge: #ddd8cc;
+  --mc1-led-lens: #e3ded3;
+  --mc1-led-on: #ff3b14;
+  --mc1-led-on-body: #ffd3c4;
+  --mc1-metal: #cbc6bb;
+  --mc1-metal-edge: #aaa498;
+  --mc1-dark: #2b2824;
+  position: relative;
+  width: 100%;
+  border-radius: calc(var(--mc1-r, 2.6) / 85.6 * 100%) / calc(var(--mc1-r, 2.6) / 54 * 100%);
+  box-shadow: var(--sh-lift);
+}
+:root[data-theme="dark"] .mc1-card {
+  /* a lamp-lit white board, not a slab of light on the dark desk */
+  --mc1-board: #e6e2d8;
+  --mc1-board-edge: #cfc9bb;
+  --mc1-led-body: #dcd7cc;
+  --mc1-led-edge: #c6c0b2;
+  --mc1-led-lens: #cdc7ba;
+  --mc1-led-on-body: #f2c3b2;
+}
+.mc1-card svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.mc1-board {
+  fill: var(--mc1-board);
+  stroke: var(--mc1-board-edge);
+  stroke-width: 0.12;
+}
+.mc1-silk {
+  fill: var(--mc1-silk);
+}
+.mc1-usb > rect:first-child {
+  fill: var(--mc1-metal);
+  stroke: var(--mc1-metal-edge);
+  stroke-width: 0.12;
+}
+.mc1-usb-mouth {
+  fill: var(--mc1-dark);
+}
+.mc1-sensor > rect:first-child {
+  fill: var(--mc1-dark);
+}
+.mc1-sensor-window {
+  fill: #5a554e;
+}
+.mc1-button > rect {
+  fill: var(--mc1-metal);
+  stroke: var(--mc1-metal-edge);
+  stroke-width: 0.12;
+}
+.mc1-button-cap {
+  fill: var(--mc1-dark);
+  transition: r 120ms var(--ease), fill 120ms var(--ease);
+}
+.mc1-button[data-pressable] {
+  cursor: pointer;
+  touch-action: none;
+}
+.mc1-button[data-pressable]:hover .mc1-button-cap {
+  fill: #3a3631;
+}
+.mc1-button[data-pressed] .mc1-button-cap {
+  r: 1.55;
+  fill: #14120f;
+}
+.mc1-button:focus-visible {
+  outline: none;
+}
+.mc1-button:focus-visible > rect {
+  stroke: var(--blue);
+  stroke-width: 0.35;
+}
+.mc1-led > rect:first-child {
+  fill: var(--mc1-led-body);
+  stroke: var(--mc1-led-edge);
+  stroke-width: 0.06;
+  transition: fill 90ms var(--ease);
+}
+.mc1-led-lens {
+  fill: var(--mc1-led-lens);
+  transition: fill 90ms var(--ease);
+}
+.mc1-led.on > rect:first-child {
+  fill: var(--mc1-led-on-body);
+}
+.mc1-led.on .mc1-led-lens {
+  fill: var(--mc1-led-on);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc1-led > rect,
+  .mc1-led-lens,
+  .mc1-button-cap {
+    transition: none;
+  }
+}

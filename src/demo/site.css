@@ -1,0 +1,241 @@
+/* The site's design tokens, copied from keetsta-website/src/styles/tokens.css for working on the module
+   alone. On the site the module uses the site's own. */
+/* ───────────────────────────────────────────────────────────────
+   Design tokens — "paper desk / scrapbook bento"
+   Light, tactile, even shadows. No glow.
+   ─────────────────────────────────────────────────────────────── */
+
+:root {
+  /* — paper canvas — */
+  --paper: #f1ede3;
+  --paper-2: #ebe5d7;
+
+  /* — cards & surfaces — */
+  --card: #ffffff;
+  --card-2: #faf8f3;
+  --card-3: #f3f0e8;
+
+  /* — hairlines — */
+  --line: #e6e0d2;
+  --line-2: #d8d1bf;
+  --line-3: #c7bfa9;
+
+  /* — ink — */
+  --ink: #211f1b;
+  --ink-2: #4c4842;
+  /* the lightest ink that still reads at 4.5:1 on every light surface, the
+     paper included (#837e72 was 3.5:1 to 4:1) */
+  --muted: #6f6b61;
+  --faint: #aaa392;
+  --ghost: #c9c2b0;
+
+  /* — brand — */
+  --gh: #1f2328;
+  --tg: #2aabee;
+  --lfm: #d51007;
+  --steam: #1b2838;
+
+  /* — github diff (light) — */
+  --add: #1a7f37;
+  --del: #cf222e;
+  --add-bg: #aceebb;
+  --del-bg: #ffcecb;
+
+  /* — contribution greens (github light) — */
+  --c0: #ebedf0;
+  --c1: #9be9a8;
+  --c2: #40c463;
+  --c3: #30a14e;
+  --c4: #216e39;
+
+  /* — playful accents (used on tiles/stickers) — */
+  --pink: #ff4f96;
+  --blue: #4f6bff;
+  --yellow: #ffc234;
+  --purple: #7b5bff;
+  --orange: #ff6a2b;
+  --green: #18a957;
+  /* the accents as text: the same hues, deep enough to read at 4.5:1 on the
+     paper and the cards (the bright ones are 3:1 there); fills, bars and
+     icons keep the bright ones */
+  --pink-ink: #cd116e;
+  --green-ink: #027b3c;
+  --orange-ink: #bb4200;
+  --purple-ink: #6e4aee;
+  --mint: #d8f6e3;
+  --sky: #dce9ff;
+  --cream: #fff3d6;
+
+  /* — type — primary: Geist · secondary: Golos Text · mono: Geist Mono — */
+  --font-sans: "Geist", "Segoe UI", system-ui, sans-serif;
+  --font-secondary: "Golos Text", "Geist", "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: "Geist", "Segoe UI", system-ui, sans-serif;
+
+  /* per-word mood fonts */
+  --w-developing: "JetBrains Mono", monospace;
+  --w-researching: "Newsreader", Georgia, serif;
+  --w-designing: "Caveat", cursive;
+  --w-building: "Anton", "Arial Narrow", sans-serif;
+
+  /* — radii — */
+  --r-xs: 7px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 26px;
+  --r-pill: 999px;
+
+  /* — even, neutral shadows (NO color glow) — */
+  --sh-xs: 0 1px 1.5px rgba(33, 31, 27, 0.06);
+  --sh-sm: 0 1px 2px rgba(33, 31, 27, 0.06), 0 2px 4px rgba(33, 31, 27, 0.04);
+  --sh-card: 0 1px 2px rgba(33, 31, 27, 0.05), 0 10px 24px -14px rgba(33, 31, 27, 0.22);
+  --sh-lift: 0 2px 4px rgba(33, 31, 27, 0.06), 0 22px 44px -20px rgba(33, 31, 27, 0.3);
+  --sh-sticker: 0 5px 14px -4px rgba(33, 31, 27, 0.28);
+
+  /* — motion — */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+
+  /* — layout — */
+  --maxw: 1060px;
+  --gap: 18px;
+  --card-pad: clamp(18px, 2.4vw, 26px);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Dark theme — a warm "lamp-lit desk at night", not a cold black.
+   Only the neutral surface/ink/line/shadow + tinted-tile tokens flip;
+   the brand accents (pink/blue/green/…) stay so the palette keeps its
+   character. Cards stay the brightest surface (as in light) so every
+   raised/hover surface that steps toward --card still reads as lifted.
+   Applied when <html data-theme="dark"> (set by the theme toggle / OS).
+   ─────────────────────────────────────────────────────────────── */
+:root[data-theme="dark"] {
+  /* — desk (darkest) — */
+  --paper: #17140f;
+  --paper-2: #120f0b;
+
+  /* the bright accents read on the dark cards already; the purple is lifted */
+  --pink-ink: var(--pink);
+  --green-ink: var(--green);
+  --orange-ink: var(--orange);
+  --purple-ink: #8874fe;
+
+  /* — cards & surfaces (card = brightest, then recede) — */
+  --card: #24201a;
+  --card-2: #211d17;
+  --card-3: #2c261e;
+
+  /* — hairlines (lighten as they go, so they stay visible on dark) — */
+  --line: #322c24;
+  --line-2: #3e372c;
+  --line-3: #524a3b;
+
+  /* — ink — */
+  --ink: #f1ebdf;
+  --ink-2: #cbc3b4;
+  --muted: #9a9284;
+  --faint: #6f6858;
+  --ghost: #544d3f;
+
+  /* NB: --gh stays the dark brand color in both themes — the GitHub app-icon
+     tile carries a white glyph, so a light tile would hide it. */
+
+  /* — github diff (dark) — */
+  --add: #3fb950;
+  --del: #f85149;
+  --add-bg: #17301f;
+  --del-bg: #35201e;
+
+  /* — contribution greens (github dark) — */
+  --c0: #2a251d;
+  --c1: #0e4429;
+  --c2: #006d32;
+  --c3: #26a641;
+  --c4: #39d353;
+
+  /* — tinted tiles — */
+  --mint: #18301f;
+  --sky: #16233d;
+  --cream: #322817;
+
+  /* — even, neutral shadows — deeper on dark so cards still separate — */
+  --sh-xs: 0 1px 1.5px rgba(0, 0, 0, 0.3);
+  --sh-sm: 0 1px 2px rgba(0, 0, 0, 0.32), 0 2px 4px rgba(0, 0, 0, 0.24);
+  --sh-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 24px -14px rgba(0, 0, 0, 0.6);
+  --sh-lift: 0 2px 4px rgba(0, 0, 0, 0.34), 0 22px 44px -20px rgba(0, 0, 0, 0.66);
+  --sh-sticker: 0 5px 14px -4px rgba(0, 0, 0, 0.6);
+}
+
+/* the bits of keetsta-website/src/styles/global.css the module leans on */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+:root {
+  --sheet-dot: rgba(33, 31, 27, 0.12);
+}
+:root[data-theme="dark"] {
+  --sheet-dot: rgba(255, 255, 255, 0.05);
+}
+body {
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--sheet-dot) 1.4px, transparent 1.5px);
+  background-size: 22px 22px;
+  background-position: -1px -1px;
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font-family: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+:focus-visible {
+  outline: 2.5px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.card {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-card);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+}
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.eyebrow svg {
+  color: var(--muted);
+}

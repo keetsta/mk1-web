@@ -1,0 +1,33 @@
+{
+  "name": "mc1-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "keetsta.me/mc1: the MC-1 card's shell in the browser. Terminal over Web Serial, firmware over WebUSB, and try-it with the shell itself in WebAssembly",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/",
+    "wasm": "sh wasm/build.sh",
+    "geometry": "python3 tools/card_geometry.py ../mc1-card src/mc1/preview/geometry.ts"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-icons": "^5.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@types/w3c-web-serial": "^1.0.7",
+    "@types/w3c-web-usb": "^1.0.10",
+    "@vitejs/plugin-react": "^4.3.4",
+    "playwright-core": "^1.64.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}

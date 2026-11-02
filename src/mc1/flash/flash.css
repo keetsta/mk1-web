@@ -1,0 +1,125 @@
+.mc1-flash {
+  padding: var(--card-pad);
+  display: grid;
+  gap: 18px;
+}
+.mc1-flash-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mc1-release {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card-2);
+}
+.mc1-release-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+.mc1-drop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--r-md);
+  color: var(--ink-2);
+  font-size: 15px;
+  transition: border-color 180ms var(--ease), background 180ms var(--ease);
+}
+.mc1-drop svg {
+  flex: none;
+  color: var(--muted);
+}
+.mc1-drop[data-over] {
+  border-color: var(--ink-2);
+  background: var(--card-2);
+}
+.mc1-link {
+  font-size: inherit;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line-3);
+  text-underline-offset: 3px;
+}
+.mc1-job {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.mc1-job-title {
+  font-weight: 600;
+}
+.mc1-job-pick {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  color: var(--ink-2);
+  font-size: 15px;
+}
+.mc1-progress {
+  position: relative;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--card-2);
+  overflow: hidden;
+}
+.mc1-progress > div {
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  transform-origin: left;
+  transition: transform 200ms var(--ease);
+}
+.mc1-progress span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13.5px;
+  color: var(--ink);
+  mix-blend-mode: difference;
+  filter: invert(1);
+}
+.mc1-ok,
+.mc1-bad {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 15px;
+}
+.mc1-ok svg {
+  color: var(--green-ink);
+  margin-top: 2px;
+  flex: none;
+}
+.mc1-bad svg {
+  color: var(--orange-ink);
+  margin-top: 2px;
+  flex: none;
+}
+.mc1-bad a,
+.mc1-manual a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line-3);
+  text-underline-offset: 3px;
+}
+.mc1-manual {
+  display: grid;
+  gap: 8px;
+  padding-left: 22px;
+  color: var(--ink-2);
+  font-size: 15px;
+}

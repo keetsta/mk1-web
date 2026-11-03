@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Desk } from "../help/platform";
 import { Copyable } from "../help/Copyable";
-import { LuCheck, LuCircleAlert, LuCpu, LuFileUp, LuLoaderCircle } from "../icons";
+import { LuCheck, LuCircleAlert, LuCpu, LuFileUp, LuLoaderCircle, SiGithub } from "../icons";
 import { Picoboot, RP2350_BOOT } from "./picoboot";
 import { compareVersions, download, latestRelease, type FirmwareSource, type Release } from "./releases";
 import { parseUf2, type Image } from "./uf2";
@@ -126,6 +126,11 @@ export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFl
     <section className="mk1-flash card" aria-labelledby="mk1-flash-title">
       <div className="mk1-flash-head">
         <h2 className="eyebrow" id="mk1-flash-title"><LuCpu size={17} /> firmware</h2>
+        {source.github && (
+          <a className="mk1-flash-src" href={`https://github.com/${source.github}`} target="_blank" rel="noreferrer">
+            <SiGithub size={14} /> {source.github}
+          </a>
+        )}
         <span className="mk1-pill">
           on the card <span className="mono">{onCard ?? "----"}</span>
         </span>
@@ -139,7 +144,12 @@ export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFl
           <>
             <div>
               <p className="mk1-release-name">
-                latest release <span className="mono">{rel.version}</span>
+                latest release{" "}
+                {rel.page ? (
+                  <a className="mono mk1-link" href={rel.page} target="_blank" rel="noreferrer">{rel.version}</a>
+                ) : (
+                  <span className="mono">{rel.version}</span>
+                )}
                 {day(rel.date) && <span className="mk1-quiet"> · {day(rel.date)}</span>}
               </p>
               <p className="mk1-quiet">

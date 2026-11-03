@@ -1,9 +1,21 @@
 .mk1 {
-  display: grid;
+  /* a column, not a grid: a folded block's -20px margin gives the gap back only in flex (a grid
+     track never shrinks below zero) */
+  display: flex;
+  flex-direction: column;
   gap: 20px;
   max-width: var(--maxw);
   margin: 0 auto;
   padding: clamp(28px, 6vw, 64px) clamp(16px, 4vw, 32px) 72px;
+  /* the 3D card's canvas reaches past the card for its turn and shadow: never past the page's sides */
+  overflow-x: clip;
+}
+/* the 3D card's canvas reaches over its neighbours for its turn and shadow: they stay on top of it */
+.mk1-head,
+.mk1-actions,
+.mk1-controls-fold {
+  position: relative;
+  z-index: 1;
 }
 .mk1-head h1 {
   font-family: var(--font-display);
@@ -22,11 +34,7 @@
 .mk1-stage {
   display: grid;
   justify-items: center;
-  gap: 18px;
   padding: clamp(8px, 3vw, 28px) 0 4px;
-}
-.mk1-stage .mk1-card {
-  max-width: 680px;
 }
 .mk1-controls {
   display: flex;
@@ -60,22 +68,6 @@
   text-align: right;
   color: var(--ink);
 }
-.mk1-icon-btn {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--card);
-  color: var(--ink-2);
-  box-shadow: var(--sh-xs);
-  transition: background 180ms var(--ease), color 180ms var(--ease);
-}
-.mk1-icon-btn:hover {
-  background: var(--card-2);
-  color: var(--ink);
-}
 .mk1-hint {
   flex-basis: 100%;
   text-align: center;
@@ -101,7 +93,11 @@
   font-size: 15px;
   font-weight: 600;
   box-shadow: var(--sh-xs);
-  transition: background 180ms var(--ease), border-color 180ms var(--ease), opacity 180ms var(--ease);
+  transition: background 180ms var(--ease), border-color 180ms var(--ease), opacity 180ms var(--ease),
+    transform 160ms var(--ease);
+}
+.mk1-btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 .mk1-btn svg {
   color: var(--muted);
@@ -174,9 +170,39 @@
     transform: rotate(360deg);
   }
 }
+/* the page's source and the commit this build runs */
+.mk1-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 20px;
+  margin-top: 4px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.mk1-foot a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--line-3);
+  text-underline-offset: 3px;
+  transition: color 180ms var(--ease), text-decoration-color 180ms var(--ease);
+}
+.mk1-foot a:hover {
+  color: var(--ink);
+  text-decoration-color: var(--ink-2);
+}
+.mk1-foot svg {
+  color: var(--muted);
+}
 @media (prefers-reduced-motion: reduce) {
   .mk1-spin {
     animation: none;
+  }
+  .mk1-btn:active:not(:disabled) {
+    transform: none;
   }
 }
 @media (max-width: 640px) {

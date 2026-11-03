@@ -1,9 +1,12 @@
 """The front of the MK-1 card for the preview, straight from the board: mk1-card/card.kicad_pcb ->
-src/mk1/preview/geometry.ts. Millimetres from the board's top-left corner, y down.
+src/mk1/preview/geometry.ts, and the front's copper, mask, paste, silkscreen and drills as SVGs in
+src/mk1/preview/layers/, the 3D card's surface. Millimetres from the board's top-left corner, y down.
+The layers are plotted by kicad-cli (KiCad 9): $KICAD_CLI, PATH, or KiCad's default install path.
 
 python3 tools/card_geometry.py ../mk1-card src/mk1/preview/geometry.ts
 """
-import math, os, subprocess, sys
+import math, os, re, shutil, subprocess, sys, tempfile
+import xml.etree.ElementTree as ET
 
 card, out = sys.argv[1], sys.argv[2]
 sys.path.insert(0, os.path.join(card, 'tools'))
@@ -123,3 +126,139 @@ export const SILK = "{''.join(silk)}";
 ''')
 print(f'{W:.2f} x {H:.2f} mm, r {radius:.2f}; {len(leds)} LEDs; {len(silk)} silk polygons; '
       f'{os.path.getsize(out) // 1024} KB')
+
+
+# ── the front's layers, for the 3D card's surface ──
+
+def kicad_cli():
+    for c in (os.environ.get('KICAD_CLI'), shutil.which('kicad-cli'),
+              r'C:\Program Files\KiCad\9.0\bin\kicad-cli.exe',
+              '/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli'):
+        if c and os.path.isfile(c):
+            return c
+    raise SystemExit('kicad-cli not found: install KiCad 9 or point $KICAD_CLI at it')
+
+
+def plot(kl, tmp):
+    """one layer as kicad-cli plots it: black on nothing, the page cropped to the board's items (wider than
+    the outline: the USB-C overhangs the edge). Copper gets its drill holes in white; elsewhere drill marks
+    would print as black dots on the silkscreen"""
+    path = os.path.join(tmp, kl + '.svg')
+    drills = '2' if kl.endswith('.Cu') else '0'
+    args = [kicad_cli(), 'pcb', 'export', 'svg', '--layers', kl, '--mode-single', '--page-size-mode', '2',
+            '--exclude-drawing-sheet', '--black-and-white', '--drill-shape-opt', drills, '-o', path]
+    if 'Silk' in kl:
+        args.append('--subtract-soldermask')
+    r = subprocess.run(args + [os.path.join(card, 'card.kicad_pcb')], capture_output=True, text=True)
+    if r.returncode:
+        raise SystemExit(r.stdout + r.stderr)
+    return ET.parse(path).getroot()
+
+
+def tag(el):
+    return el.tag.rsplit('}', 1)[-1]
+
+
+def css(el, inherited):
+    style = dict(inherited)
+    for part in el.get('style', '').replace('\n', ' ').split(';'):
+        if ':' in part:
+            k, v = part.split(':', 1)
+            style[k.strip()] = v.strip()
+    return style
+
+
+def n2(s):
+    t = f'{round(float(s), 2):.2f}'.rstrip('0').rstrip('.')
+    return '0' if t in ('', '-0') else t
+
+
+def shapes(root):
+    """(kind, geometry, paint) for every path and circle; paint is 'hole' for KiCad's white drill marks"""
+    out = []
+
+    def walk(el, style):
+        for c in el:
+            s = css(c, style)
+            if tag(c) == 'g':
+                walk(c, s)
+                continue
+            if tag(c) == 'path':
+                geo = re.sub(r'\s+', ' ', re.sub(r'-?\d+\.\d+', lambda m: n2(m.group()), c.get('d', ''))).strip()
+            elif tag(c) == 'circle':
+                geo = (n2(c.get('cx')), n2(c.get('cy')), n2(c.get('r')))
+            else:
+                continue
+            fill = s.get('fill', 'none').upper()
+            if fill == '#FFFFFF':
+                out.append((tag(c), geo, 'hole'))
+                continue
+            paint = []
+            if fill != 'NONE':
+                paint.append(('fill-rule', s['fill-rule']) if s.get('fill-rule') == 'evenodd' else None)
+            else:
+                paint.append(('fill', 'none'))
+            if s.get('stroke', 'none').lower() != 'none' and float(s.get('stroke-width', 0) or 0) > 0:
+                paint += [('stroke', '#000'), ('stroke-width', n2(s['stroke-width']))]
+            out.append((tag(c), geo, tuple(p for p in paint if p)))
+    walk(root, {})
+    return out
+
+
+def svg(items, box):
+    """a small SVG of black shapes on the board's own box, runs of equal paint grouped"""
+    x0, y0 = box
+    head = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x0:.3f} {y0:.3f} {W:g} {H:g}" '
+            f'width="{W:g}mm" height="{H:g}mm" stroke-linecap="round" stroke-linejoin="round">')
+    body, run, paint = [], [], None
+
+    def flush():
+        if run:
+            attrs = ''.join(f' {k}="{v}"' for k, v in paint)
+            body.append(f'<g{attrs}>{"".join(run)}</g>' if attrs else ''.join(run))
+            run.clear()
+
+    for kind, geo, p in items:
+        if p != paint:
+            flush()
+            paint = p
+        run.append(f'<path d="{geo}"/>' if kind == 'path' else f'<circle cx="{geo[0]}" cy="{geo[1]}" r="{geo[2]}"/>')
+    flush()
+    return head + ''.join(body) + '</svg>\n'
+
+
+def outline_corner(root):
+    """the outline's top-left corner on kicad-cli's page (every layer is plotted on the same page)"""
+    xs, ys = [], []
+    for el in root.iter():
+        if tag(el) != 'path':
+            continue
+        toks = re.findall(r'[MLA]|-?\d+(?:\.\d+)?', el.get('d', ''))
+        i = 0
+        while i < len(toks):
+            t = toks[i]
+            if t in 'ML':
+                xs.append(float(toks[i + 1])); ys.append(float(toks[i + 2])); i += 3
+            elif t == 'A':
+                xs.append(float(toks[i + 6])); ys.append(float(toks[i + 7])); i += 8
+            else:
+                xs.append(float(toks[i])); ys.append(float(toks[i + 1])); i += 2
+    return min(xs), min(ys)
+
+
+layers_dir = os.path.join(os.path.dirname(out), 'layers')
+os.makedirs(layers_dir, exist_ok=True)
+with tempfile.TemporaryDirectory() as tmp:
+    box = outline_corner(plot('Edge.Cuts', tmp))
+    holes = []
+    for name, kl in (('cu', 'F.Cu'), ('mask', 'F.Mask'), ('paste', 'F.Paste'), ('silk', 'F.Silkscreen')):
+        items = shapes(plot(kl, tmp))
+        holes += [(k, g) for k, g, p in items if p == 'hole' and (k, g) not in holes]
+        path = os.path.join(layers_dir, f'f-{name}.svg')
+        with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+            fh.write(svg([i for i in items if i[2] != 'hole'], box))
+        print(f'{kl}: {os.path.getsize(path) // 1024} KB')
+    path = os.path.join(layers_dir, 'f-drill.svg')
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write(svg([(k, g, ()) for k, g in holes], box))
+    print(f'drills: {len(holes)}, {os.path.getsize(path) // 1024} KB')

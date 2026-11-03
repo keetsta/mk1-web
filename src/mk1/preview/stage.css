@@ -1,0 +1,47 @@
+/* the card's stage: the drawing in the flow, the 3D card's canvas around it with room for the card's
+   turn and its shadow on the page */
+.mk1-cardstage {
+  position: relative;
+  width: 100%;
+  max-width: 680px;
+}
+.mk1-cardstage .mk1-card {
+  transition: opacity 320ms var(--ease);
+}
+.mk1-cardstage[data-live] .mk1-card {
+  opacity: 0;
+}
+.mk1-card3d {
+  position: absolute;
+  left: -14%;
+  top: -22%;
+  width: 128%;
+  height: 144%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 320ms var(--ease);
+  /* the shadow on the page thins out before the canvas ends, never cut by its edge */
+  mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent),
+    linear-gradient(to bottom, transparent, #000 9%, #000 88%, transparent);
+  mask-composite: intersect;
+}
+.mk1-cardstage[data-live] .mk1-card3d {
+  opacity: 1;
+}
+.mk1-card3d-key {
+  position: absolute;
+  border-radius: 24%;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+}
+.mk1-card3d-key:focus-visible {
+  outline: 2.5px solid var(--blue);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk1-cardstage .mk1-card,
+  .mk1-card3d {
+    transition: none;
+  }
+}

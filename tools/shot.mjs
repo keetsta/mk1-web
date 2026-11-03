@@ -1,24 +1,84 @@
-// Screenshots of the demo page in system Chrome: node tools/shot.mjs <out dir> (needs `npm run preview` on :4173)
-import { chromium } from "playwright-core";
+// Screenshots of the demo page in system Chrome: node tools/shot.mjs <out dir> [card|nousb]
+// (needs `npm run preview` on :4173, or SHOT_URL=http://localhost:5173/ for the dev server; `card` takes
+// only the card, in both themes; `nousb` only the page as a browser without Web Serial and WebUSB sees it)
+import { chromium, devices } from "playwright-core";
 
 const out = process.argv[2] ?? "shots";
-const url = (q = "") => `http://localhost:4173/${q}`;
-const browser = await chromium.launch({ channel: "chrome", headless: true });
+const only = process.argv[3];
+const base = process.env.SHOT_URL ?? "http://localhost:4173/";
+const url = (q = "") => `${base}${q}`;
+// headless Chrome has no WebGL of its own: SwiftShader draws the 3D card
+const browser = await chromium.launch({
+  channel: "chrome",
+  headless: true,
+  args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader"],
+});
 
 async function page(opts = {}, init) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 1100 }, deviceScaleFactor: 2, ...opts });
   await ctx.route(/api\.github\.com/, (r) => r.fulfill({ status: 404, body: "{}" }));
   if (init) await ctx.addInitScript(init);
   const p = await ctx.newPage();
+  p.on("pageerror", (e) => console.error("page error:", e.message));
+  p.on("console", (m) => m.type() === "error" && console.error("console:", m.text()));
   return p;
 }
 const settle = (p, ms = 400) => p.waitForTimeout(ms);
+// the 3D card up and at rest (the drawing stays where there's no WebGL: then don't wait long)
+const card = (p) => p.locator(".mk1-cardstage[data-settled]").waitFor({ timeout: 20000 }).catch(() => {});
+
+// Firefox and Safari have neither Web Serial nor WebUSB: the page as it meets them, the terminal steps after
+// "connect the card", and the firmware panel's way without WebUSB
+async function noUsb(theme) {
+  const p = await page({}, () => {
+    const nav = Object.getPrototypeOf(navigator);
+    delete nav.serial;
+    delete nav.usb;
+  });
+  await p.goto(url(`?theme=${theme}`));
+  await p.evaluate(() => document.fonts.ready);
+  await card(p);
+  await settle(p, 600);
+  await p.screenshot({ path: `${out}/${theme}-nousb.png`, fullPage: true });
+  await p.getByRole("button", { name: "connect the card" }).click();
+  await settle(p, 700);
+  await p.locator(".mk1-help").screenshot({ path: `${out}/${theme}-help.png` });
+  await p.getByRole("button", { name: "firmware" }).click();
+  await settle(p, 700);
+  await p.screenshot({ path: `${out}/${theme}-nousb-open.png`, fullPage: true });
+  await p.context().close();
+}
+
+if (only === "card") {
+  for (const theme of ["light", "dark"]) {
+    const p = await page();
+    await p.goto(url(`?theme=${theme}`));
+    await card(p);
+    await settle(p, 300);
+    // the card with the room its tilt and shadow take round it
+    const box = await p.locator(".mk1-cardstage").boundingBox();
+    const clip = { x: box.x - box.width * 0.1, y: box.y - box.height * 0.14, width: box.width * 1.2, height: box.height * 1.3 };
+    await p.screenshot({ path: `${out}/${theme}-card.png`, clip });
+    await p.context().close();
+  }
+  await browser.close();
+  console.log("shots in", out);
+  process.exit(0);
+}
+
+if (only === "nousb") {
+  for (const theme of ["light", "dark"]) await noUsb(theme);
+  await browser.close();
+  console.log("shots in", out);
+  process.exit(0);
+}
 
 for (const theme of ["light", "dark"]) {
   // nothing connected
-  let p = await page();
+  const p = await page();
   await p.goto(url(`?theme=${theme}`));
   await p.evaluate(() => document.fonts.ready);
+  await card(p);
   await settle(p, 600);
   await p.screenshot({ path: `${out}/${theme}-idle.png`, fullPage: true });
 
@@ -44,18 +104,18 @@ for (const theme of ["light", "dark"]) {
   await p.locator(".mk1-flash").screenshot({ path: `${out}/${theme}-firmware.png` });
   await p.context().close();
 
-  // a browser without Web Serial: the terminal steps for the visitor's OS
-  p = await page({}, () => { delete Object.getPrototypeOf(navigator).serial; });
-  await p.goto(url(`?theme=${theme}`));
-  await p.getByRole("button", { name: "connect the card" }).click();
-  await settle(p, 400);
-  await p.locator(".mk1-help").screenshot({ path: `${out}/${theme}-help.png` });
-  await p.context().close();
+  await noUsb(theme);
 }
 
-// a phone
-const phone = await page({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+// a phone: an iPhone, where every browser is Safari underneath, without Web Serial and WebUSB
+const { defaultBrowserType: _, ...iphone } = devices["iPhone 13"];
+const phone = await page({ ...iphone, viewport: { width: 390, height: 844 } }, () => {
+  const nav = Object.getPrototypeOf(navigator);
+  delete nav.serial;
+  delete nav.usb;
+});
 await phone.goto(url("?theme=light"));
+await card(phone);
 await settle(phone, 600);
 await phone.screenshot({ path: `${out}/phone.png`, fullPage: true });
 

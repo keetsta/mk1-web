@@ -6,9 +6,29 @@
 .mk1-flash-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 12px 18px;
   flex-wrap: wrap;
+}
+.mk1-flash-head .mk1-pill {
+  margin-left: auto;
+}
+.mk1-flash-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--line-3);
+  text-underline-offset: 3px;
+  transition: color 180ms var(--ease), text-decoration-color 180ms var(--ease);
+}
+.mk1-flash-src:hover {
+  color: var(--ink);
+  text-decoration-color: var(--ink-2);
+}
+.mk1-flash-src svg {
+  color: var(--muted);
 }
 .mk1-release {
   display: flex;

@@ -48,19 +48,21 @@
 .mk1-usb-mouth {
   fill: var(--mk1-dark);
 }
+/* TEMT6200FX01: green-tinted clear epoxy, its die seen through it */
 .mk1-sensor > rect:first-child {
-  fill: var(--mk1-dark);
+  fill: #4f9f68;
 }
 .mk1-sensor-window {
-  fill: #5a554e;
+  fill: #2f6e47;
 }
 .mk1-button > rect {
   fill: var(--mk1-metal);
   stroke: var(--mk1-metal-edge);
   stroke-width: 0.12;
 }
+/* TS-1187A-B-A-B: a brass keystake in a stainless cover */
 .mk1-button-cap {
-  fill: var(--mk1-dark);
+  fill: #c9a85f;
   transition: r 120ms var(--ease), fill 120ms var(--ease);
 }
 .mk1-button[data-pressable] {
@@ -68,11 +70,11 @@
   touch-action: none;
 }
 .mk1-button[data-pressable]:hover .mk1-button-cap {
-  fill: #3a3631;
+  fill: #d4b56e;
 }
 .mk1-button[data-pressed] .mk1-button-cap {
-  r: 1.55;
-  fill: #14120f;
+  r: 0.9;
+  fill: #b39350;
 }
 .mk1-button:focus-visible {
   outline: none;

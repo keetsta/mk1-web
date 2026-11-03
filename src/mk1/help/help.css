@@ -102,3 +102,31 @@ kbd {
   background: var(--card-3);
   color: var(--ink);
 }
+/* the footnote to "connect the card": one line, the commands the only ink in it. it breaks only between
+   systems, never between a system and its command */
+.mk1-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 20px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.mk1-note code {
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+  /* one click takes the whole command */
+  user-select: all;
+}
+.mk1-note a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line-3);
+  text-underline-offset: 3px;
+  transition: color 180ms var(--ease), text-decoration-color 180ms var(--ease);
+}
+.mk1-note a:hover {
+  color: var(--ink);
+  text-decoration-color: var(--ink-2);
+}

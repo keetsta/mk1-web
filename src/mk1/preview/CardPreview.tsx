@@ -46,7 +46,7 @@ export function CardPreview({ rows, pressable, pressed, onPress }: Props) {
           onKeyUp={(e) => { if (e.key === " " || e.key === "Enter") press(false); }}
         >
           <rect x={-side / 2} y={-side / 2} width={side} height={side} rx={0.35} />
-          <circle className="mk1-button-cap" r={1.75} />
+          <circle className="mk1-button-cap" r={1} />
         </g>
         <g className="mk1-matrix">
           {LEDS.map(([x, y, rot], i) => (

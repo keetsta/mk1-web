@@ -4,8 +4,8 @@
 export type Hal = {
   /** bytes the shell prints, already with \r\n */
   write(bytes: Uint8Array): void;
-  /** the matrix (9 rows, bit 15 = left column) or the buzzer changed */
-  frame(rows: Uint16Array, hz: number): void;
+  /** the matrix changed (9 rows, bit 15 = left column) */
+  frame(rows: Uint16Array): void;
   button(): boolean;
   /** light level 0..1023 */
   lux(): number;
@@ -34,20 +34,11 @@ type Exports = {
 
 export async function createShell(wasm: BufferSource, hal: Hal): Promise<Shell> {
   let memory: WebAssembly.Memory | null = null;
-  let rows = new Uint16Array(9);
-  let hz = 0;
   const bytes = (p: number, n: number) => new Uint8Array(memory!.buffer, p, n);
   const { instance } = await WebAssembly.instantiate(wasm, {
     mk1: {
       write: (p: number, n: number) => hal.write(bytes(p, n).slice()),
-      matrix: (p: number) => {
-        rows = new Uint16Array(memory!.buffer.slice(p, p + 18));
-        hal.frame(rows, hz);
-      },
-      tone: (f: number) => {
-        hz = f;
-        hal.frame(rows, hz);
-      },
+      matrix: (p: number) => hal.frame(new Uint16Array(memory!.buffer.slice(p, p + 18))),
       button: () => (hal.button() ? 1 : 0),
       lux: () => Math.max(0, Math.min(1023, Math.round(hal.lux()))),
       load: (p: number, n: number) => {

@@ -8,11 +8,11 @@ const dec = (b: Uint8Array) => new TextDecoder().decode(b);
 test("frames are taken out, text goes through", () => {
   const got: CardMessage[] = [];
   const sp = new OscSplitter((m) => got.push(m));
-  const out = sp.push(enc("mk1> \x1b]7777;f;ffff00000000000000000000000000000000;440\x07help\r\n"));
+  const out = sp.push(enc("mk1> \x1b]7777;f;ffff00000000000000000000000000000000\x07help\r\n"));
   assert.equal(dec(out), "mk1> help\r\n");
   assert.equal(got.length, 1);
   const f = got[0];
-  assert.ok(f.kind === "frame" && f.rows[0] === 0xffff && f.rows[8] === 0 && f.hz === 440);
+  assert.ok(f.kind === "frame" && f.rows[0] === 0xffff && f.rows[8] === 0);
 });
 
 test("a frame split across chunks, ended by ESC \\", () => {
@@ -31,8 +31,9 @@ test("the shell's own escapes and other OSCs reach the terminal untouched", () =
 });
 
 test("parseOsc rejects anything malformed", () => {
-  assert.equal(parseOsc("7777;f;ffff;0"), null);
-  assert.equal(parseOsc("7777;f;" + "0".repeat(36) + ";-1"), null);
+  assert.equal(parseOsc("7777;f;ffff"), null);
+  // protocol 1 frames carry no tone: the card has no buzzer
+  assert.equal(parseOsc("7777;f;" + "0".repeat(36) + ";440"), null);
   assert.equal(parseOsc("7778;mk1;1"), null);
   assert.deepEqual(parseOsc("7777;mk1;1"), { kind: "hello", version: 1, firmware: null });
 });

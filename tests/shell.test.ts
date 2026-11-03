@@ -7,12 +7,12 @@ const wasm = readFileSync(new URL("../src/mk1/shell/mk1-shell.wasm", import.meta
 
 async function boot() {
   let out = "";
-  const frames: { rows: Uint16Array; hz: number }[] = [];
+  const frames: Uint16Array[] = [];
   let saved: Uint8Array | null = null;
   const t = { btn: false, lux: 512 };
   const shell = await createShell(wasm, {
     write: (b) => { out += new TextDecoder().decode(b); },
-    frame: (rows, hz) => frames.push({ rows: rows.slice(), hz }),
+    frame: (rows) => frames.push(rows.slice()),
     button: () => t.btn,
     lux: () => t.lux,
     load: () => saved,
@@ -30,12 +30,11 @@ test("the real shell runs in WebAssembly: banner, help, the manual", async () =>
   assert.match(type("nope\r"), /nope: no such command/);
 });
 
-test("the matrix and the buzzer reach the page as frames", async () => {
+test("the matrix reaches the page as frames, and there is no buzzer", async () => {
   const { type, frames } = await boot();
   type("try mov 0xffff pix\r");
-  type("try mov 440 bz\r");
-  assert.equal(frames.at(-1)!.rows[0], 0xffff);
-  assert.equal(frames.at(-1)!.hz, 440);
+  assert.equal(frames.at(-1)![0], 0xffff);
+  assert.match(type("try mov 440 bz\r"), /what is 'bz'\?/);
 });
 
 test("a program sees the page's button and light, and the task can be solved", async () => {
@@ -47,7 +46,7 @@ test("a program sees the page's button and light, and the task can be solved", a
   assert.ok(s.shell.running());
   s.t.btn = true;
   for (let i = 0; i < 3; i++) s.shell.tick();
-  assert.equal(s.frames.at(-1)!.rows[8], 0xffff);
+  assert.equal(s.frames.at(-1)![8], 0xffff);
   s.type("\x03");
   assert.match(s.type("check\r"), /task 1 passed[\s\S]*chapter 1 unlocked/);
   assert.ok(s.saved()!.length > 2000);

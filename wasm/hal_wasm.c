@@ -13,7 +13,6 @@
 
 IMPORT("write") void js_write(const char *s, size_t n);
 IMPORT("matrix") void js_matrix(const uint16_t *rows);
-IMPORT("tone") void js_tone(uint32_t hz);
 IMPORT("button") int js_button(void);
 IMPORT("lux") uint32_t js_lux(void);
 IMPORT("load") int js_load(void *buf, size_t n);
@@ -22,7 +21,6 @@ IMPORT("exit") void js_exit(void);
 
 void hal_write(const char *s, size_t n) { js_write(s, n); }
 void hal_matrix(const uint16_t rows[9]) { js_matrix(rows); }
-void hal_tone(uint16_t hz) { js_tone(hz); }
 int hal_button(void) { return js_button(); }
 uint16_t hal_lux(void) { return (uint16_t)js_lux(); }
 int hal_rows(void) { return 0; } /* xterm.js keeps its own scrollback: no paging */

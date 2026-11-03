@@ -114,7 +114,6 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   modeRef.current = mode;
   const inputs = useRef({ pressed, lux });
   inputs.current = { pressed, lux };
-  // the shell's frames carry a buzzer tone too: the card has no buzzer, the page plays none
   const tryRows = useRef<Uint16Array>(blank());
   const reconnect = useRef(false);
   // try it's shell didn't load: the terminal stays open with the reason in it

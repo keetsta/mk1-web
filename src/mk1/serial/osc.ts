@@ -8,12 +8,12 @@ const MAX = 256;
 export type CardMessage =
   /** protocol version, and the firmware's own (MK1_VERSION; a release is tagged v<firmware>) */
   | { kind: "hello"; version: number; firmware: string | null }
-  | { kind: "frame"; rows: Uint16Array; hz: number };
+  | { kind: "frame"; rows: Uint16Array };
 
 export const HELLO = new TextEncoder().encode("\x1b]7777;hello\x07");
 export const BYE = new TextEncoder().encode("\x1b]7777;bye\x07");
 
-/** "7777;f;<36 hex>;<hz>" or "7777;mk1;<protocol>[;<firmware>]"; anything else is not ours */
+/** "7777;f;<36 hex>" or "7777;mk1;<protocol>[;<firmware>]"; anything else is not ours */
 export function parseOsc(body: string): CardMessage | null {
   const p = body.split(";");
   if (p[0] !== "7777") return null;
@@ -22,10 +22,10 @@ export function parseOsc(body: string): CardMessage | null {
     const firmware = p.length === 4 && /^\d+\.\d+\.\d+$/.test(p[3]) ? p[3] : null;
     return Number.isInteger(version) ? { kind: "hello", version, firmware } : null;
   }
-  if (p[1] === "f" && p.length === 4 && /^[0-9a-f]{36}$/i.test(p[2]) && /^\d{1,5}$/.test(p[3])) {
+  if (p[1] === "f" && p.length === 3 && /^[0-9a-f]{36}$/i.test(p[2])) {
     const rows = new Uint16Array(9);
     for (let r = 0; r < 9; r++) rows[r] = parseInt(p[2].slice(r * 4, r * 4 + 4), 16);
-    return { kind: "frame", rows, hz: Number(p[3]) };
+    return { kind: "frame", rows };
   }
   return null;
 }

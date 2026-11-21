@@ -2,11 +2,12 @@
 
 import { BYE, HELLO, OscSplitter, type CardMessage } from "./osc";
 
-/** the card's firmware enumerates under Raspberry Pi's vendor id, as pico-sdk boards do */
+/** the card's firmware enumerates under Raspberry Pi's vendor id with pico-sdk's own product id, as every
+ *  pico-sdk board does: the filter lets any of them through, and only the card's hello tells them apart */
 const CARD_FILTER: SerialPortFilter = { usbVendorId: 0x2e8a };
 
 export type Trouble =
-  | "unsupported" // no Web Serial: Safari, Firefox, phones
+  | "unsupported" // no Web Serial: Safari, Firefox before 151, phones
   | "insecure" // not https
   | "blocked" // a policy or an embedding frame forbids it
   | "busy" // the port won't open: screen or another tab holds it, or no permission (Linux)
@@ -26,10 +27,15 @@ export function serialTrouble(): Trouble | null {
   return null;
 }
 
-/** a card this site was allowed before, else the browser's picker; null if the picker was closed */
-export async function pickCard(): Promise<SerialPort | null> {
-  const known = (await navigator.serial.getPorts()).find((p) => p.getInfo().usbVendorId === CARD_FILTER.usbVendorId);
-  if (known) return known;
+/** the port this site was allowed before, if it is the only one plugged in. with two (two cards, or a card and
+ *  another board) the visitor picks: taking the first would open the wrong one, or the one another tab holds */
+export async function knownCard(): Promise<SerialPort | null> {
+  const known = (await navigator.serial.getPorts()).filter((p) => p.getInfo().usbVendorId === CARD_FILTER.usbVendorId);
+  return known.length === 1 ? known[0] : null;
+}
+
+/** the browser's picker; null if it was closed */
+export async function askCard(): Promise<SerialPort | null> {
   try {
     return await navigator.serial.requestPort({ filters: [CARD_FILTER] });
   } catch (e) {

@@ -18,3 +18,7 @@ export type Desk = "mac" | "linux" | "windows";
 export const deskOf = (os: Os): Desk => (os === "windows" ? "windows" : os === "linux" || os === "chromeos" ? "linux" : "mac");
 
 export const usbTrouble = () => !window.isSecureContext || !("usb" in navigator);
+
+/** Firefox has Web Serial on computers from 151 on, and the first time a site asks for a port it offers a
+ *  "site permission add-on" before the port list; it has no WebUSB */
+export const isFirefox = () => /firefox\//i.test(navigator.userAgent);

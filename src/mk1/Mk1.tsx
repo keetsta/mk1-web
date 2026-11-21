@@ -2,12 +2,12 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Flasher } from "./flash/Flasher";
 import type { FirmwareSource } from "./flash/releases";
-import { ConnectHelp, TerminalNote } from "./help/ConnectHelp";
-import { deskOf, detectOs, usbTrouble } from "./help/platform";
+import { ConnectHelp, NoAnswer, TerminalNote } from "./help/ConnectHelp";
+import { deskOf, detectOs, isFirefox, usbTrouble } from "./help/platform";
 import { LuCpu, LuLoaderCircle, LuPlay, LuSun, LuUnplug, LuUsb, SiGithub } from "./icons";
 import { CardStage } from "./preview/CardStage";
 import { dark, fromRows, type Screen } from "./screen";
-import { LinkError, openCard, pickCard, serialTrouble, type CardLink, type Trouble } from "./serial/link";
+import { LinkError, askCard, knownCard, openCard, serialTrouble, type CardLink, type Trouble } from "./serial/link";
 import type { Shell } from "./shell/core";
 import { loadShell } from "./shell/load";
 import { Term, type TermHandle } from "./term/Term";
@@ -44,6 +44,8 @@ const DEFAULT_SOURCE: Source = { repo: "keetsta/mk1-web", ...BUILD };
 const CURSOR = fromRows([0, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0]);
 const DARK = dark();
 const BLINK = 530; // ms, a terminal's
+/** a card answers the page's hello within a tick (20 ms); a port still quiet after this is not one */
+const HELLO_MS = 1500;
 
 /** the site's --ease */
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -95,11 +97,17 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   const os = useMemo(detectOs, []);
   // a browser that can never open the card says so before anyone presses connect
   const away = useMemo(serialTrouble, []);
+  const firefox = useMemo(isFirefox, []);
   const [mode, setMode] = useState<Mode>("idle");
   const [screen, setScreen] = useState<Screen>(dark);
   const [card, setCard] = useState<{ live: boolean; firmware: string | null }>({ live: false, firmware: null });
   const [trouble, setTrouble] = useState<Trouble | null>(null);
   const [connecting, setConnecting] = useState(false);
+  // the browser's port list is open (in Firefox, the first time, its permission add-on before it)
+  const [picking, setPicking] = useState(false);
+  // the port is open but nothing on it said hello
+  const [silent, setSilent] = useState(false);
+  const quiet = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [flashOpen, setFlashOpen] = useState(false);
   const [pressed, setPressed] = useState(false);
   const [lux, setLux] = useState(512);
@@ -180,29 +188,25 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     }
   };
 
-  const connectCard = useCallback(async () => {
-    setTrouble(null);
-    const t = serialTrouble();
-    if (t) return setTrouble(t);
-    let port: SerialPort | null;
-    try {
-      port = await pickCard();
-    } catch (e) {
-      return setTrouble(e instanceof LinkError ? e.trouble : "blocked");
-    }
-    if (!port) return;
+  const open = useCallback(async (port: SerialPort) => {
     setFailed(false);
+    setSilent(false);
     setConnecting(true);
     try {
       await closeCard();
+      let hello = false;
       const l = await openCard(port, {
         text: (b) => term.current?.write(b),
         message: (m) => {
-          if (m.kind === "hello") setCard({ live: true, firmware: m.firmware });
-          else setScreen(m.screen);
+          if (m.kind === "hello") {
+            hello = true;
+            setSilent(false);
+            setCard({ live: true, firmware: m.firmware });
+          } else setScreen(m.screen);
         },
         closed: (lost) => {
           if (link.current === l) link.current = null;
+          setSilent(false);
           setCard({ live: false, firmware: null });
           setMode((m) => (m === "card" ? "idle" : m));
           if (lost && !reconnect.current) setTrouble("lost");
@@ -212,6 +216,10 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
       term.current?.clear();
       setScreen(dark());
       setMode("card");
+      clearTimeout(quiet.current);
+      quiet.current = setTimeout(() => {
+        if (!hello && link.current === l) setSilent(true);
+      }, HELLO_MS);
     } catch (e) {
       setTrouble(e instanceof LinkError ? e.trouble : "busy");
     } finally {
@@ -219,19 +227,44 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     }
   }, []);
 
-  // after a firmware install the card comes back on its own: reopen it
+  /** fresh: the browser's list even when the site knows a port, for when the one it knows isn't the card */
+  const connectCard = async (fresh = false) => {
+    setTrouble(null);
+    const t = serialTrouble();
+    if (t) return setTrouble(t);
+    let port: SerialPort | null;
+    try {
+      port = fresh ? null : await knownCard();
+      if (!port) {
+        setPicking(true);
+        port = await askCard();
+      }
+    } catch (e) {
+      return setTrouble(e instanceof LinkError ? e.trouble : "blocked");
+    } finally {
+      setPicking(false);
+    }
+    if (port) await open(port);
+  };
+
+  // after a firmware install the card comes back on its own: reopen the port that came back (with two
+  // allowed, the site's own list can't tell which one it is, and the picker needs a click)
   useEffect(() => {
     if (!("serial" in navigator)) return;
-    const back = () => {
+    const back = (e: Event) => {
       if (!reconnect.current) return;
       reconnect.current = false;
-      setTimeout(connectCard, 400);
+      const port = e.target as SerialPort;
+      setTimeout(() => open(port), 400);
     };
     navigator.serial.addEventListener("connect", back);
     return () => navigator.serial.removeEventListener("connect", back);
-  }, [connectCard]);
+  }, [open]);
 
-  useEffect(() => () => { link.current?.close(); }, []);
+  useEffect(() => () => {
+    clearTimeout(quiet.current);
+    link.current?.close();
+  }, []);
 
   const onData = useCallback((b: Uint8Array) => {
     if (modeRef.current === "try") shell.current?.input(b);
@@ -255,12 +288,40 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
 
   const status =
     mode === "try" ? "the shell, running in your browser"
-    : mode === "card" ? `firmware ${card.firmware ?? "----"}`
+    : mode === "card" ? (card.firmware ? `firmware ${card.firmware}` : card.live ? "connected" : silent ? "no answer" : "connecting")
+    : picking ? "pick the card in the list"
     : connecting ? "connecting"
     : "nothing connected";
 
   const shown = mode === "idle" ? (blink ? CURSOR : DARK) : screen;
   const termOpen = mode !== "idle" || failed;
+
+  // where this browser can never reach the card (an iPhone, Safari), the shell right here leads, and connect
+  // only opens the way round
+  const tryFirst = away !== null;
+  const connectButton =
+    mode === "card" ? (
+      <button type="button" className="mk1-btn" onClick={closeCard}><LuUnplug size={17} /> disconnect</button>
+    ) : (
+      <button
+        type="button"
+        className={tryFirst ? "mk1-btn" : "mk1-btn primary"}
+        onClick={() => connectCard()}
+        disabled={connecting || picking}
+      >
+        {connecting ? <LuLoaderCircle className="mk1-spin" size={17} /> : <LuUsb size={17} />} connect the card
+      </button>
+    );
+  const tryButton = (
+    <button
+      type="button"
+      className={tryFirst && mode !== "try" ? "mk1-btn primary" : "mk1-btn"}
+      onClick={startTry}
+      aria-pressed={mode === "try"}
+    >
+      <LuPlay size={17} /> try it here
+    </button>
+  );
 
   return (
     <MotionConfig reducedMotion="user">
@@ -299,20 +360,12 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
         </motion.div>
 
         <motion.div className="mk1-actions" {...rise(2)}>
-          {mode === "card" ? (
-            <button type="button" className="mk1-btn" onClick={closeCard}><LuUnplug size={17} /> disconnect</button>
-          ) : (
-            <button type="button" className="mk1-btn primary" onClick={connectCard} disabled={connecting}>
-              {connecting ? <LuLoaderCircle className="mk1-spin" size={17} /> : <LuUsb size={17} />} connect the card
-            </button>
-          )}
-          <button type="button" className="mk1-btn" onClick={startTry} aria-pressed={mode === "try"}>
-            <LuPlay size={17} /> try it here
-          </button>
+          {tryFirst ? <>{tryButton}{connectButton}</> : <>{connectButton}{tryButton}</>}
           <button type="button" className="mk1-btn" onClick={() => setFlashOpen((o) => !o)} aria-expanded={flashOpen}>
             <LuCpu size={17} /> firmware
           </button>
-          <span className="mk1-pill mk1-status" data-mode={mode}>
+          {/* green once the card has said hello, not for a port that only opened */}
+          <span className="mk1-pill mk1-status" data-mode={mode === "card" && !card.live ? "wait" : mode}>
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
                 key={status}
@@ -328,9 +381,28 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
         </motion.div>
 
         <AnimatePresence initial={false}>
+          {picking && firefox && (
+            <Unfold key="gate">
+              <p className="mk1-note">
+                firefox may first offer a “site permission add-on”: that is how it lets a page reach usb. allow it,
+                then pick the card.
+              </p>
+            </Unfold>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
           {trouble && (
             <Unfold key="help">
-              <ConnectHelp trouble={trouble} os={os} />
+              <ConnectHelp trouble={trouble} os={os} onPick={() => connectCard(true)} />
+            </Unfold>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {silent && (
+            <Unfold key="silent">
+              <NoAnswer onPick={() => connectCard(true)} />
             </Unfold>
           )}
         </AnimatePresence>
@@ -344,6 +416,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
                 connected={mode === "card"}
                 bootloader={async () => { reconnect.current = true; await link.current?.bootloader(); }}
                 usb={!usbTrouble()}
+                serial={!away}
                 desk={deskOf(os)}
                 onFlashed={() => { reconnect.current = true; }}
               />

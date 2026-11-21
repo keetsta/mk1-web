@@ -16,13 +16,24 @@ type Props = {
   bootloader(): Promise<void>;
   /** WebUSB works here */
   usb: boolean;
+  /** Web Serial works here: a connected card goes to its bootloader without a hand on it */
+  serial: boolean;
   desk: Desk;
   /** the card is writing its new firmware and will come back over USB */
   onFlashed(): void;
 };
 
 type Step = "fetch" | "boot" | "pick" | "write" | "done" | "fail" | "manual";
-type Job = { label: string; file: Uint8Array | null; step: Step; progress: number; error: string | null; page: string | null };
+type Job = {
+  label: string;
+  file: Uint8Array | null;
+  step: Step;
+  progress: number;
+  error: string | null;
+  page: string | null;
+  /** the card is in its bootloader already: its RP2350 drive is up, no unplugging */
+  booted: boolean;
+};
 type Latest = { s: "loading" } | { s: "none" } | { s: "error"; m: string } | { s: "ok"; r: Release };
 
 const UDEV = `echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", MODE="0666"' | sudo tee /etc/udev/rules.d/60-mk1.rules && sudo udevadm control --reload-rules`;
@@ -45,7 +56,7 @@ const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toLowerCase() : null;
 
 /** firmware like Flipper's: the latest release in one click, or a .uf2 of your own */
-export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFlashed }: Props) {
+export function Flasher({ source, onCard, connected, bootloader, usb, serial, desk, onFlashed }: Props) {
   const [latest, setLatest] = useState<Latest>({ s: "loading" });
   const [job, setJob] = useState<Job | null>(null);
   const [over, setOver] = useState(false);
@@ -80,7 +91,7 @@ export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFl
   }
 
   async function install(label: string, get: () => Promise<Uint8Array>, page: string | null) {
-    setJob({ label, file: null, step: "fetch", progress: 0, error: null, page });
+    setJob({ label, file: null, step: "fetch", progress: 0, error: null, page, booted: false });
     try {
       const file = await get();
       image.current = parseUf2(file);
@@ -88,12 +99,23 @@ export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFl
     } catch (e) {
       return fail(e);
     }
-    if (!usb) return patch({ step: "manual" });
-    const ready = await bootDevice();
-    if (ready) return write(ready);
-    if (connected) {
+    const boot = async () => {
       patch({ step: "boot" });
-      await bootloader().catch(() => {});
+      const booted = await bootloader().then(() => true, () => false);
+      patch({ booted });
+    };
+    // no WebUSB (Firefox): the drive is the way, but a card on Web Serial still gets there by itself
+    if (!usb) {
+      if (connected) await boot();
+      return patch({ step: "manual" });
+    }
+    const ready = await bootDevice();
+    if (ready) {
+      patch({ booted: true });
+      return write(ready);
+    }
+    if (connected) {
+      await boot();
       const back = await waitBootDevice(4000);
       if (back) return write(back);
     }
@@ -188,7 +210,7 @@ export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFl
           {job.step === "pick" && (
             <div className="mk1-job-pick">
               <p>
-                {connected
+                {job.booted
                   ? "the card restarted into its bootloader. pick it in the browser's list: “RP2350 Boot”."
                   : "unplug the card, hold its button and plug it back in, then pick “RP2350 Boot” in the browser's list."}
               </p>
@@ -214,11 +236,21 @@ export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFl
             </p>
           )}
           {(job.step === "manual" || job.step === "fail") && job.file && (
-            <ol className="mk1-manual">
-              <li>{fileUrl && <a href={fileUrl} download={job.label.endsWith(".uf2") ? job.label : `mk1-${job.label}.uf2`}>save the .uf2</a>}{fileUrl ? " (if you don't have it yet)" : ""}</li>
-              <li>unplug the card, hold its button and plug it back in: a drive called <span className="mono">RP2350</span> shows up</li>
-              <li>drop the .uf2 onto it. the card restarts with the new firmware by itself</li>
-            </ol>
+            <>
+              <ol className="mk1-manual">
+                <li>{fileUrl && <a href={fileUrl} download={job.label.endsWith(".uf2") ? job.label : `mk1-${job.label}.uf2`}>save the .uf2</a>}{fileUrl ? " (if you don't have it yet)" : ""}</li>
+                <li>
+                  {job.booted ? "the card has restarted into its bootloader" : "unplug the card, hold its button and plug it back in"}:
+                  a drive called <span className="mono">RP2350</span> shows up
+                </li>
+                <li>drop the .uf2 onto it. the card restarts with the new firmware by itself</li>
+              </ol>
+              {!job.booted && serial && !connected && (
+                <p className="mk1-quiet">or connect the card first and install again: the page restarts it into its bootloader, no unplugging.</p>
+              )}
+              {/* the restart was asked for, not seen: a card that didn't take it still needs the hand */}
+              {job.booted && <p className="mk1-quiet">no drive? unplug the card, hold its button and plug it back in.</p>}
+            </>
           )}
         </div>
       )}

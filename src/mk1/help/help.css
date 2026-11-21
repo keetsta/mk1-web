@@ -1,6 +1,8 @@
 .mk1-help {
   padding: var(--card-pad);
   display: grid;
+  /* a long command scrolls inside its box: an auto track would grow to it and push the text past a phone's edge */
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 .mk1-help-lead {
@@ -14,6 +16,31 @@
   flex: none;
   margin-top: 3px;
   color: var(--orange-ink);
+}
+.mk1-help > button {
+  justify-self: start;
+}
+/* on a phone, the way on to a computer */
+.mk1-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: var(--sh-xs);
+  transition: background 180ms var(--ease);
+}
+.mk1-send:hover {
+  background: var(--card-2);
+}
+.mk1-send svg {
+  color: var(--muted);
 }
 .mk1-tabs {
   display: inline-flex;
@@ -43,6 +70,7 @@
 }
 .mk1-steps ol {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding-left: 22px;
   color: var(--ink-2);

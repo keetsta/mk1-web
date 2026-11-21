@@ -83,21 +83,16 @@
   stroke: var(--blue);
   stroke-width: 0.35;
 }
+/* --lit: how lit the LED is, 0% to 100%, as the card says */
 .mk1-led > rect:first-child {
-  fill: var(--mk1-led-body);
+  fill: color-mix(in srgb, var(--mk1-led-on-body) var(--lit, 0%), var(--mk1-led-body));
   stroke: var(--mk1-led-edge);
   stroke-width: 0.06;
   transition: fill 90ms var(--ease);
 }
 .mk1-led-lens {
-  fill: var(--mk1-led-lens);
+  fill: color-mix(in srgb, var(--mk1-led-on) var(--lit, 0%), var(--mk1-led-lens));
   transition: fill 90ms var(--ease);
-}
-.mk1-led.on > rect:first-child {
-  fill: var(--mk1-led-on-body);
-}
-.mk1-led.on .mk1-led-lens {
-  fill: var(--mk1-led-on);
 }
 @media (prefers-reduced-motion: reduce) {
   .mk1-led > rect,

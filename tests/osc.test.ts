@@ -12,7 +12,19 @@ test("frames are taken out, text goes through", () => {
   assert.equal(dec(out), "mk1> help\r\n");
   assert.equal(got.length, 1);
   const f = got[0];
-  assert.ok(f.kind === "frame" && f.rows[0] === 0xffff && f.rows[8] === 0);
+  // protocol 1: the shell's matrix, on or off
+  assert.ok(f.kind === "frame" && f.screen[0] === 1 && f.screen[15] === 1 && f.screen[16] === 0 && f.screen[143] === 0);
+});
+
+test("protocol 2 frames carry a level per LED, what the card's LEDs show", () => {
+  const m = parseOsc("7777;f;f5" + "0".repeat(141) + "a");
+  assert.ok(m && m.kind === "frame");
+  assert.equal(m.screen.length, 144);
+  assert.equal(m.screen[0], 1);
+  assert.equal(m.screen[1], Math.fround(5 / 15));
+  assert.equal(m.screen[2], 0);
+  assert.equal(m.screen[143], Math.fround(10 / 15));
+  assert.deepEqual(parseOsc("7777;mk1;2;0.1.0"), { kind: "hello", version: 2, firmware: "0.1.0" });
 });
 
 test("a frame split across chunks, ended by ESC \\", () => {
@@ -32,6 +44,8 @@ test("the shell's own escapes and other OSCs reach the terminal untouched", () =
 
 test("parseOsc rejects anything malformed", () => {
   assert.equal(parseOsc("7777;f;ffff"), null);
+  assert.equal(parseOsc("7777;f;" + "0".repeat(143)), null);
+  assert.equal(parseOsc("7777;f;" + "g".repeat(144)), null);
   // protocol 1 frames carry no tone: the card has no buzzer
   assert.equal(parseOsc("7777;f;" + "0".repeat(36) + ";440"), null);
   assert.equal(parseOsc("7778;mk1;1"), null);

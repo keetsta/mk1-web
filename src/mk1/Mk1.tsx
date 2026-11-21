@@ -6,6 +6,7 @@ import { ConnectHelp, TerminalNote } from "./help/ConnectHelp";
 import { deskOf, detectOs, usbTrouble } from "./help/platform";
 import { LuCpu, LuLoaderCircle, LuPlay, LuSun, LuUnplug, LuUsb, SiGithub } from "./icons";
 import { CardStage } from "./preview/CardStage";
+import { dark, fromRows, type Screen } from "./screen";
 import { LinkError, openCard, pickCard, serialTrouble, type CardLink, type Trouble } from "./serial/link";
 import type { Shell } from "./shell/core";
 import { loadShell } from "./shell/load";
@@ -39,11 +40,9 @@ const DEFAULT_FIRMWARE: FirmwareSource = { manifest: "/mk1/firmware/latest.json"
 export type Source = { repo: string; commit?: string; label?: string };
 const BUILD = typeof __MK1_BUILD__ === "object" && __MK1_BUILD__ ? __MK1_BUILD__ : null;
 const DEFAULT_SOURCE: Source = { repo: "keetsta/mk1-web", ...BUILD };
-const blank = () => new Uint16Array(9);
-
 /** with nothing connected the card waits as it does on a desk: a cursor blinking at the matrix's left */
-const CURSOR = Uint16Array.from([0, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0]);
-const DARK = blank();
+const CURSOR = fromRows([0, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0]);
+const DARK = dark();
 const BLINK = 530; // ms, a terminal's
 
 /** the site's --ease */
@@ -97,7 +96,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   // a browser that can never open the card says so before anyone presses connect
   const away = useMemo(serialTrouble, []);
   const [mode, setMode] = useState<Mode>("idle");
-  const [rows, setRows] = useState<Uint16Array>(blank);
+  const [screen, setScreen] = useState<Screen>(dark);
   const [card, setCard] = useState<{ live: boolean; firmware: string | null }>({ live: false, firmware: null });
   const [trouble, setTrouble] = useState<Trouble | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -114,7 +113,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   modeRef.current = mode;
   const inputs = useRef({ pressed, lux });
   inputs.current = { pressed, lux };
-  const tryRows = useRef<Uint16Array>(blank());
+  const tryScreen = useRef<Screen>(dark());
   const reconnect = useRef(false);
   // try it's shell didn't load: the terminal stays open with the reason in it
   const [failed, setFailed] = useState(false);
@@ -155,7 +154,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     setFailed(false);
     await closeCard();
     term.current?.clear();
-    setRows(tryRows.current);
+    setScreen(tryScreen.current);
     setMode("try");
     if (shell.current) {
       shell.current.input(Uint8Array.of(13)); // back to a fresh prompt
@@ -164,8 +163,8 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
         shell.current = await loadShell({
           write: (b) => term.current?.write(b),
           frame: (r) => {
-            tryRows.current = r;
-            if (modeRef.current === "try") setRows(r);
+            tryScreen.current = fromRows(r);
+            if (modeRef.current === "try") setScreen(tryScreen.current);
           },
           button: () => inputs.current.pressed,
           lux: () => inputs.current.lux,
@@ -200,7 +199,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
         text: (b) => term.current?.write(b),
         message: (m) => {
           if (m.kind === "hello") setCard({ live: true, firmware: m.firmware });
-          else setRows(m.rows);
+          else setScreen(m.screen);
         },
         closed: (lost) => {
           if (link.current === l) link.current = null;
@@ -211,9 +210,8 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
       });
       link.current = l;
       term.current?.clear();
-      setRows(blank());
+      setScreen(dark());
       setMode("card");
-      term.current?.write("\x1b[2m(the card is on. press enter for its prompt)\x1b[0m\r\n");
     } catch (e) {
       setTrouble(e instanceof LinkError ? e.trouble : "busy");
     } finally {
@@ -261,7 +259,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     : connecting ? "connecting"
     : "nothing connected";
 
-  const shown = mode === "idle" ? (blink ? CURSOR : DARK) : rows;
+  const shown = mode === "idle" ? (blink ? CURSOR : DARK) : screen;
   const termOpen = mode !== "idle" || failed;
 
   return (
@@ -274,7 +272,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
 
         <motion.div className="mk1-stage" {...rise(2)}>
           {/* pressable whenever no real card is on: with one, the card's own button is the one that counts */}
-          <CardStage rows={shown} pressable={mode !== "card"} pressed={pressed} onPress={setPressed} />
+          <CardStage screen={shown} pressable={mode !== "card"} pressed={pressed} onPress={setPressed} />
           <AnimatePresence initial={false}>
             {mode === "try" && (
               <motion.div

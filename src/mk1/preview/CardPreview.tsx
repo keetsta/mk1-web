@@ -1,9 +1,11 @@
+import type { CSSProperties } from "react";
+import { drawn, type Screen } from "../screen";
 import { BOARD, BUTTON, LEDS, SENSOR, SILK, USB, type Body } from "./geometry";
 import "./preview.css";
 
 type Props = {
-  /** the matrix, 9 rows, bit 15 = leftmost column */
-  rows: Uint16Array;
+  /** what the matrix shows */
+  screen: Screen;
   /** the card's button can be pressed here (try it); on a real card it is the card's own */
   pressable: boolean;
   pressed: boolean;
@@ -13,8 +15,7 @@ type Props = {
 const place = (b: Body) => `translate(${b.x} ${b.y}) rotate(${b.rot})`;
 
 /** the front of the card, drawn from the board files: the lettering, the matrix, the button, the sensor */
-export function CardPreview({ rows, pressable, pressed, onPress }: Props) {
-  const lit = (i: number) => (rows[i >> 4] >> (15 - (i & 15))) & 1;
+export function CardPreview({ screen, pressable, pressed, onPress }: Props) {
   const side = Math.min(BUTTON.w, BUTTON.h);
   const press = (down: boolean) => pressable && onPress?.(down);
   return (
@@ -50,7 +51,12 @@ export function CardPreview({ rows, pressable, pressed, onPress }: Props) {
         </g>
         <g className="mk1-matrix">
           {LEDS.map(([x, y, rot], i) => (
-            <g key={i} transform={`translate(${x} ${y}) rotate(${rot})`} className={lit(i) ? "mk1-led on" : "mk1-led"}>
+            <g
+              key={i}
+              transform={`translate(${x} ${y}) rotate(${rot})`}
+              className="mk1-led"
+              style={{ "--lit": `${Math.round(drawn(screen[i]) * 100)}%` } as CSSProperties}
+            >
               <rect x={-0.8} y={-0.4} width={1.6} height={0.8} rx={0.12} />
               <rect className="mk1-led-lens" x={-0.48} y={-0.27} width={0.96} height={0.54} rx={0.1} />
             </g>

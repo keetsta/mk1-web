@@ -2,18 +2,21 @@
    OSC 7777 sequences carry the matrix frames. OscSplitter takes them out of the byte stream before the
    terminal sees it; everything else, other OSCs included, goes on to the terminal untouched. */
 
+import { LEDS, dark, fromRows, type Screen } from "../screen.ts";
+
 const ESC = 0x1b, BEL = 0x07, OSC_OPEN = 0x5d /* ] */, ST_END = 0x5c /* \ */;
 const MAX = 256;
 
 export type CardMessage =
   /** protocol version, and the firmware's own (MK1_VERSION; a release is tagged v<firmware>) */
   | { kind: "hello"; version: number; firmware: string | null }
-  | { kind: "frame"; rows: Uint16Array };
+  | { kind: "frame"; screen: Screen };
 
 export const HELLO = new TextEncoder().encode("\x1b]7777;hello\x07");
 export const BYE = new TextEncoder().encode("\x1b]7777;bye\x07");
 
-/** "7777;f;<36 hex>" or "7777;mk1;<protocol>[;<firmware>]"; anything else is not ours */
+/** "7777;f;<144 hex>", a level 0..f per LED (protocol 2: what the card's LEDs show), or "7777;f;<36 hex>",
+ *  9 rows of the shell's matrix (protocol 1); "7777;mk1;<protocol>[;<firmware>]". anything else is not ours */
 export function parseOsc(body: string): CardMessage | null {
   const p = body.split(";");
   if (p[0] !== "7777") return null;
@@ -22,10 +25,16 @@ export function parseOsc(body: string): CardMessage | null {
     const firmware = p.length === 4 && /^\d+\.\d+\.\d+$/.test(p[3]) ? p[3] : null;
     return Number.isInteger(version) ? { kind: "hello", version, firmware } : null;
   }
-  if (p[1] === "f" && p.length === 3 && /^[0-9a-f]{36}$/i.test(p[2])) {
+  if (p[1] !== "f" || p.length !== 3 || !/^[0-9a-f]*$/i.test(p[2])) return null;
+  if (p[2].length === LEDS) {
+    const screen = dark();
+    for (let i = 0; i < LEDS; i++) screen[i] = parseInt(p[2][i], 16) / 15;
+    return { kind: "frame", screen };
+  }
+  if (p[2].length === 36) {
     const rows = new Uint16Array(9);
     for (let r = 0; r < 9; r++) rows[r] = parseInt(p[2].slice(r * 4, r * 4 + 4), 16);
-    return { kind: "frame", rows };
+    return { kind: "frame", screen: fromRows(rows) };
   }
   return null;
 }

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { BOARD, LEDS } from "../geometry";
+import { drawn } from "../../screen";
 import { button, leds, materials, sensor, usb } from "./parts";
 import { printSurface } from "./surface";
 
@@ -186,7 +187,8 @@ export type Card3D = {
   ready: Promise<void>;
   /** the canvas's size in css px and where the card's box sits in it */
   layout(w: number, h: number, card: Rect): void;
-  rows(rows: Uint16Array): void;
+  /** a level per LED, 0..1, row 0 on top, left to right */
+  screen(levels: ArrayLike<number>): void;
   press(down: boolean): void;
   theme(dark: boolean): void;
   visible(on: boolean): void;
@@ -362,11 +364,13 @@ export function startCard(canvas: HTMLCanvasElement, opt: CardOptions): Card3D |
     let dt = Math.min(0.25, Math.max(0, (t - last) / 1000));
     last = t;
     let moving = false;
-    while (dt > 0) {
+    // at least one step, even of nothing: rAF's time is the frame's start and can come before the wake,
+    // and a zero dt that never stepped would stop the loop with the LEDs short of where they're going
+    do {
       const h = Math.min(dt, 1 / 120);
       moving = step(h) || moving;
       dt -= h;
-    }
+    } while (dt > 0);
     render();
     if (moving && shown) raf = requestAnimationFrame(tick);
     else if (up && !settled) {
@@ -440,8 +444,8 @@ export function startCard(canvas: HTMLCanvasElement, opt: CardOptions): Card3D |
       poseDirty = true;
       if (!raf && shown && armed) render();
     },
-    rows(rows) {
-      for (let i = 0; i < n; i++) want[i] = (rows[i >> 4] >> (15 - (i & 15))) & 1;
+    screen(levels) {
+      for (let i = 0; i < n; i++) want[i] = drawn(levels[i]);
       wake();
     },
     press(down) {

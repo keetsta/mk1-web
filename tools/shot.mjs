@@ -1,6 +1,7 @@
-// Screenshots of the demo page in system Chrome: node tools/shot.mjs <out dir> [card|nousb]
+// Screenshots of the demo page in system Chrome: node tools/shot.mjs <out dir> [card|nousb|levels]
 // (needs `npm run preview` on :4173, or SHOT_URL=http://localhost:5173/ for the dev server; `card` takes
-// only the card, in both themes; `nousb` only the page as a browser without Web Serial and WebUSB sees it)
+// only the card, in both themes; `nousb` only the page as a browser without Web Serial and WebUSB sees it;
+// `levels` a card on usb showing a frame of its cube)
 import { chromium, devices } from "playwright-core";
 
 const out = process.argv[2] ?? "shots";
@@ -59,6 +60,44 @@ if (only === "card") {
     const box = await p.locator(".mk1-cardstage").boundingBox();
     const clip = { x: box.x - box.width * 0.1, y: box.y - box.height * 0.14, width: box.width * 1.2, height: box.height * 1.3 };
     await p.screenshot({ path: `${out}/${theme}-card.png`, clip });
+    await p.context().close();
+  }
+  await browser.close();
+  console.log("shots in", out);
+  process.exit(0);
+}
+
+// a card on usb showing its own screen: a stand-in port answers the page's hello with one frame of the cube,
+// the levels in between that the shell never sends
+const CUBE = "00000002410000000000003c79000000000005c66a60000000007b6226b4000000009420034a100000003c6136890000000005b55a8000000000007ab60000000000000440000000";
+const fakeCard = `{
+  const port = {
+    getInfo: () => ({ usbVendorId: 0x2e8a }),
+    async open() {
+      let card;
+      this.readable = new ReadableStream({ start: (c) => { card = c; } });
+      this.writable = new WritableStream({
+        write: (b) => {
+          if (new TextDecoder().decode(b).includes("7777;hello"))
+            card.enqueue(new TextEncoder().encode("\\x1b]7777;mk1;2;0.0.0\\x07\\x1b]7777;f;${CUBE}\\x07"));
+        },
+      });
+    },
+    async close() {},
+  };
+  Object.defineProperty(navigator, "serial", {
+    value: { getPorts: async () => [port], requestPort: async () => port, addEventListener() {}, removeEventListener() {} },
+  });
+}`;
+
+if (only === "levels") {
+  for (const theme of ["light", "dark"]) {
+    const p = await page({}, { content: fakeCard });
+    await p.goto(url(`?theme=${theme}`));
+    await card(p);
+    await p.getByRole("button", { name: "connect the card" }).click();
+    await settle(p, 800);
+    await p.locator(".mk1-stage").screenshot({ path: `${out}/${theme}-levels.png` });
     await p.context().close();
   }
   await browser.close();

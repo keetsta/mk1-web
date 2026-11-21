@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Card3D, Rect } from "./card3d/engine";
+import type { Screen } from "../screen";
 import { CardPreview } from "./CardPreview";
 import "./stage.css";
 
 type Props = {
-  /** the matrix, 9 rows, bit 15 = leftmost column */
-  rows: Uint16Array;
+  /** what the matrix shows */
+  screen: Screen;
   /** the card's button can be pressed here (try it); on a real card it is the card's own */
   pressable: boolean;
   pressed: boolean;
@@ -17,7 +18,7 @@ const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
 /** The card: its drawing at once, then the card itself, in 3D, once WebGL, its light and its surface are
  *  ready; the drawing fades as the card lifts off the page. Without WebGL (or if the engine's chunk
  *  doesn't load) the drawing stays, and it stays for screen readers either way. */
-export function CardStage({ rows, pressable, pressed, onPress }: Props) {
+export function CardStage({ screen, pressable, pressed, onPress }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const key = useRef<HTMLButtonElement>(null);
@@ -25,10 +26,10 @@ export function CardStage({ rows, pressable, pressed, onPress }: Props) {
   const keyAt = useRef<Rect | null>(null);
   const [live, setLive] = useState(false);
   const [settled, setSettled] = useState(false);
-  const now = useRef({ rows, pressed });
-  now.current = { rows, pressed };
+  const now = useRef({ screen, pressed });
+  now.current = { screen, pressed };
 
-  useEffect(() => engine.current?.rows(rows), [rows]);
+  useEffect(() => engine.current?.screen(screen), [screen]);
   useEffect(() => engine.current?.press(pressed), [pressed]);
 
   // the card's button, over its place in the picture: the pointer, the keyboard and screen readers
@@ -83,7 +84,7 @@ export function CardStage({ rows, pressable, pressed, onPress }: Props) {
         ro.observe(el);
         io.observe(el);
         mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-        card.rows(now.current.rows);
+        card.screen(now.current.screen);
         card.press(now.current.pressed);
         await card.ready;
         // the page's own entrance first; then the drawing becomes the card and lifts off the page
@@ -110,7 +111,7 @@ export function CardStage({ rows, pressable, pressed, onPress }: Props) {
 
   return (
     <div ref={box} className="mk1-cardstage" data-live={live || undefined} data-settled={settled || undefined}>
-      <CardPreview rows={rows} pressable={pressable && !live} pressed={pressed} onPress={onPress} />
+      <CardPreview screen={screen} pressable={pressable && !live} pressed={pressed} onPress={onPress} />
       <canvas ref={canvas} className="mk1-card3d" aria-hidden="true" />
       {live && pressable && (
         <button

@@ -247,6 +247,40 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     if (port) await open(port);
   };
 
+  /** the card into its bootloader for an install, no hand on it: through the terminal's link, or, with the
+   *  terminal closed, through the port the site was allowed before, once the card on it has said hello. The
+   *  port filter lets any pico-sdk board through, and a 1200-baud touch would send another board to its
+   *  bootloader to take this firmware */
+  const toBootloader = async (): Promise<boolean> => {
+    if (link.current) {
+      reconnect.current = true;
+      await link.current.bootloader();
+      return true;
+    }
+    if (serialTrouble()) return false;
+    const port = await knownCard().catch(() => null);
+    if (!port) return false;
+    let hello = false;
+    let probe: CardLink;
+    try {
+      probe = await openCard(port, {
+        text: () => {},
+        message: (m) => { if (m.kind === "hello") hello = true; },
+        closed: () => {},
+      });
+    } catch {
+      return false; // another tab holds it
+    }
+    for (let t = 0; t < HELLO_MS && !hello; t += 50) await new Promise((r) => setTimeout(r, 50));
+    if (!hello) {
+      await probe.close();
+      return false;
+    }
+    reconnect.current = true;
+    await probe.bootloader();
+    return true;
+  };
+
   // after a firmware install the card comes back on its own: reopen the port that came back (with two
   // allowed, the site's own list can't tell which one it is, and the picker needs a click)
   useEffect(() => {
@@ -414,7 +448,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
                 source={firmware}
                 onCard={card.firmware}
                 connected={mode === "card"}
-                bootloader={async () => { reconnect.current = true; await link.current?.bootloader(); }}
+                bootloader={toBootloader}
                 usb={!usbTrouble()}
                 serial={!away}
                 desk={deskOf(os)}

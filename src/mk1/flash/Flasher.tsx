@@ -12,11 +12,12 @@ type Props = {
   /** the connected card's firmware version, if it told us */
   onCard: string | null;
   connected: boolean;
-  /** restarts the connected card into its bootloader */
-  bootloader(): Promise<void>;
+  /** restarts the card into its bootloader without a hand on it, whether the terminal has it or it is only
+   *  plugged in and was allowed before; false when the page can't reach it */
+  bootloader(): Promise<boolean>;
   /** WebUSB works here */
   usb: boolean;
-  /** Web Serial works here: a connected card goes to its bootloader without a hand on it */
+  /** Web Serial works here: a card the page can reach goes to its bootloader without a hand on it */
   serial: boolean;
   desk: Desk;
   /** the card is writing its new firmware and will come back over USB */
@@ -101,12 +102,13 @@ export function Flasher({ source, onCard, connected, bootloader, usb, serial, de
     }
     const boot = async () => {
       patch({ step: "boot" });
-      const booted = await bootloader().then(() => true, () => false);
+      const booted = await bootloader().catch(() => false);
       patch({ booted });
+      return booted;
     };
     // no WebUSB (Firefox): the drive is the way, but a card on Web Serial still gets there by itself
     if (!usb) {
-      if (connected) await boot();
+      await boot();
       return patch({ step: "manual" });
     }
     const ready = await bootDevice();
@@ -114,8 +116,9 @@ export function Flasher({ source, onCard, connected, bootloader, usb, serial, de
       patch({ booted: true });
       return write(ready);
     }
-    if (connected) {
-      await boot();
+    // the browser keeps the page's way to a bootloader it was given once (the RP2350's has a serial number,
+    // so that lasts); the first time it asks, and only a click opens its list
+    if (await boot()) {
       const back = await waitBootDevice(4000);
       if (back) return write(back);
     }
@@ -211,7 +214,7 @@ export function Flasher({ source, onCard, connected, bootloader, usb, serial, de
             <div className="mk1-job-pick">
               <p>
                 {job.booted
-                  ? "the card restarted into its bootloader. pick it in the browser's list: “RP2350 Boot”."
+                  ? "the card restarted into its bootloader. the browser asks this once: pick “RP2350 Boot” in its list."
                   : "unplug the card, hold its button and plug it back in, then pick “RP2350 Boot” in the browser's list."}
               </p>
               <button type="button" className="mk1-btn primary" onClick={pick}>pick the bootloader</button>

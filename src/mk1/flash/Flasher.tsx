@@ -1,14 +1,32 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Desk } from "../help/platform";
+import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { EASE, Smooth, Swap, Unfold } from "../anim";
 import { Copyable } from "../help/Copyable";
-import { LuCheck, LuCircleAlert, LuCpu, LuFileUp, LuLoaderCircle, SiGithub } from "../icons";
+import type { Desk } from "../help/platform";
+import { LuCheck, LuCircleAlert, LuCircleDot, LuCpu, LuDownload, LuFileUp, LuLoaderCircle, SiGithub } from "../icons";
 import { Picoboot, RP2350_BOOT } from "./picoboot";
-import { compareVersions, download, latestRelease, type FirmwareSource, type Release } from "./releases";
+import { download, isNewer, latestRelease, releaseDay, type FirmwareSource, type Release } from "./releases";
 import { parseUf2, type Image } from "./uf2";
 import "./flash.css";
 
+export type Latest = { s: "loading" } | { s: "none" } | { s: "error"; m: string } | { s: "ok"; r: Release };
+
+/** the latest release, asked for once as the page opens: the update banner wants it as soon as a card says hello */
+export function useLatest(source: FirmwareSource): Latest {
+  const [latest, setLatest] = useState<Latest>({ s: "loading" });
+  useEffect(() => {
+    let live = true;
+    latestRelease(source)
+      .then((r) => live && setLatest(r ? { s: "ok", r } : { s: "none" }))
+      .catch((e: Error) => live && setLatest({ s: "error", m: e.message }));
+    return () => { live = false; };
+  }, [source.manifest, source.github]);
+  return latest;
+}
+
 type Props = {
   source: FirmwareSource;
+  latest: Latest;
   /** the connected card's firmware version, if it told us */
   onCard: string | null;
   connected: boolean;
@@ -22,20 +40,29 @@ type Props = {
   desk: Desk;
   /** the card is writing its new firmware and will come back over USB */
   onFlashed(): void;
+  /** opened from the update banner: the install button takes the keyboard */
+  focusInstall?: boolean;
 };
 
 type Step = "fetch" | "boot" | "pick" | "write" | "done" | "fail" | "manual";
 type Job = {
   label: string;
+  /** from a release (else the visitor's own file), and whether the release had a sha256 to check it against */
+  release: boolean;
+  checked: boolean;
   file: Uint8Array | null;
+  /** the flash the image takes */
+  bytes: number;
   step: Step;
   progress: number;
+  /** the write began: its bar stays, however it ends */
+  wrote: boolean;
   error: string | null;
   page: string | null;
-  /** the card is in its bootloader already: its RP2350 drive is up, no unplugging */
-  booted: boolean;
+  /** the card's way to its bootloader: "now" while the page restarts it, "yes" once it is there (its RP2350
+   *  drive is up, no unplugging) */
+  boot: "no" | "now" | "yes";
 };
-type Latest = { s: "loading" } | { s: "none" } | { s: "error"; m: string } | { s: "ok"; r: Release };
 
 const UDEV = `echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", MODE="0666"' | sudo tee /etc/udev/rules.d/60-mk1.rules && sudo udevadm control --reload-rules`;
 
@@ -53,31 +80,99 @@ async function waitBootDevice(ms: number): Promise<USBDevice | null> {
   return null;
 }
 
-const day = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toLowerCase() : null;
+type Mark = "now" | "done" | "fail" | "wait";
+const MARKS: Record<Mark, ReactNode> = {
+  now: <LuLoaderCircle className="mk1-spin" size={16} />,
+  done: <LuCheck size={16} />,
+  fail: <LuCircleAlert size={16} />,
+  wait: <LuCircleDot size={16} />,
+};
+
+/** a step of the install: what the page is doing, did, or needs from the visitor, its mark turning as it goes.
+ *  `id` names what the line says, so a new say fades in */
+function Line({ mark, id, children }: { mark: Mark; id: string; children: ReactNode }) {
+  return (
+    <motion.li
+      className="mk1-line"
+      data-mark={mark}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, transition: { duration: 0.16 } }}
+      transition={{ duration: 0.36, ease: EASE }}
+    >
+      <Swap id={mark}>{MARKS[mark]}</Swap>
+      <motion.div key={id} className="mk1-line-body" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, ease: EASE }}>
+        {children}
+      </motion.div>
+    </motion.li>
+  );
+}
+
+/** the write: kilobytes and percent counting up with the bar, which eases between the sectors the bootloader
+ *  confirms and stays when it ends (full, it turns green) */
+function Progress({ value, bytes, mark }: { value: number; bytes: number; mark: Mark }) {
+  const still = useReducedMotion();
+  const shown = useMotionValue(value);
+  useEffect(() => {
+    if (still) return void shown.set(value);
+    const run = animate(shown, value, { duration: 0.32, ease: EASE });
+    return () => run.stop();
+  }, [value, still, shown]);
+  const width = useTransform(shown, (v) => `${v * 100}%`);
+  const percent = useTransform(shown, (v) => `${Math.floor(v * 100)}%`);
+  const kb = useTransform(shown, (v) => Math.round((v * bytes) / 1024));
+  return (
+    <>
+      <span className="mk1-line-head">
+        <span>{mark === "done" ? "written" : mark === "fail" ? "the write stopped" : "writing"}</span>
+        {/* a screen reader gets the bar's own value: this counts every frame */}
+        <span className="mono mk1-count" aria-hidden="true">
+          <motion.span>{kb}</motion.span> of {Math.round(bytes / 1024)} KB · <motion.span>{percent}</motion.span>
+        </span>
+      </span>
+      <div
+        className="mk1-progress"
+        data-mark={mark}
+        role="progressbar"
+        aria-label="writing the firmware"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(value * 100)}
+      >
+        <motion.div style={{ width }} />
+      </div>
+    </>
+  );
+}
+
+function Failure({ job }: { job: Job }) {
+  return (
+    <>
+      {job.error}
+      {job.page && <> · <a href={job.page} target="_blank" rel="noreferrer">the release page</a></>}
+    </>
+  );
+}
 
 /** firmware like Flipper's: the latest release in one click, or a .uf2 of your own */
-export function Flasher({ source, onCard, connected, bootloader, usb, serial, desk, onFlashed }: Props) {
-  const [latest, setLatest] = useState<Latest>({ s: "loading" });
+export function Flasher({ source, latest, onCard, connected, bootloader, usb, serial, desk, onFlashed, focusInstall }: Props) {
   const [job, setJob] = useState<Job | null>(null);
   const [over, setOver] = useState(false);
   const image = useRef<Image | null>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const installButton = useRef<HTMLButtonElement>(null);
   const busy = job !== null && (job.step === "fetch" || job.step === "boot" || job.step === "write");
 
+  // the panel is still unfolding, clipped: scrolled to, the button would shift inside it
   useEffect(() => {
-    let live = true;
-    latestRelease(source)
-      .then((r) => live && setLatest(r ? { s: "ok", r } : { s: "none" }))
-      .catch((e: Error) => live && setLatest({ s: "error", m: e.message }));
-    return () => { live = false; };
-  }, [source.manifest, source.github]);
+    if (focusInstall) installButton.current?.focus({ preventScroll: true });
+  }, []);
 
   const patch = (p: Partial<Job>) => setJob((j) => (j ? { ...j, ...p } : j));
   const fail = (e: unknown) => patch({ step: "fail", error: e instanceof Error ? e.message : String(e) });
 
   async function write(dev: USBDevice) {
-    patch({ step: "write", progress: 0 });
+    patch({ step: "write", progress: 0, wrote: true });
     let pb: Picoboot | null = null;
     try {
       pb = await Picoboot.open(dev);
@@ -91,19 +186,25 @@ export function Flasher({ source, onCard, connected, bootloader, usb, serial, de
     }
   }
 
-  async function install(label: string, get: () => Promise<Uint8Array>, page: string | null) {
-    setJob({ label, file: null, step: "fetch", progress: 0, error: null, page, booted: false });
+  async function install(label: string, get: () => Promise<Uint8Array>, rel: Release | null) {
+    setJob({
+      label, release: rel !== null, checked: !!rel?.sha256, file: null, bytes: 0, step: "fetch", progress: 0,
+      wrote: false, error: null, page: rel?.page ?? null, boot: "no",
+    });
     try {
       const file = await get();
       image.current = parseUf2(file);
-      patch({ file });
+      patch({ file, bytes: image.current.bytes });
     } catch (e) {
       return fail(e);
     }
     const boot = async () => {
       patch({ step: "boot" });
+      // with the terminal closed, a page that knows no port is told so at once: no line flashes up for that
+      const shown = setTimeout(() => patch({ boot: "now" }), connected ? 0 : 200);
       const booted = await bootloader().catch(() => false);
-      patch({ booted });
+      clearTimeout(shown);
+      patch({ boot: booted ? "yes" : "no" });
       return booted;
     };
     // no WebUSB (Firefox): the drive is the way, but a card on Web Serial still gets there by itself
@@ -113,7 +214,7 @@ export function Flasher({ source, onCard, connected, bootloader, usb, serial, de
     }
     const ready = await bootDevice();
     if (ready) {
-      patch({ booted: true });
+      patch({ boot: "yes" });
       return write(ready);
     }
     // the browser keeps the page's way to a bootloader it was given once (the RP2350's has a serial number,
@@ -144,8 +245,93 @@ export function Flasher({ source, onCard, connected, bootloader, usb, serial, de
     if (f) install(f.name, async () => new Uint8Array(await f.arrayBuffer()), null);
   };
 
+  // while an install has the card in its bootloader it is off the serial port, not gone: it still runs what it said
+  const [seen, setSeen] = useState(onCard);
+  if (onCard && onCard !== seen) setSeen(onCard);
+  const card = onCard ?? (busy ? seen : null);
   const rel = latest.s === "ok" ? latest.r : null;
-  const newer = rel && onCard ? compareVersions(rel.version, onCard) > 0 : false;
+  const newer = rel ? isNewer(rel.version, card) : false;
+  const same = rel !== null && rel.version === card;
+
+  const lines: ReactNode[] = [];
+  if (job) {
+    const fetched = job.file !== null;
+    const failed = job.step === "fail";
+    lines.push(
+      fetched ? (
+        <Line key="get" mark="done" id="got">
+          {job.release ? (job.checked ? "downloaded, the checksum matches" : "downloaded") : "read the file"}
+        </Line>
+      ) : failed ? (
+        <Line key="get" mark="fail" id="lost"><Failure job={job} /></Line>
+      ) : (
+        <Line key="get" mark="now" id="getting">{job.release ? "downloading the firmware" : "reading the file"}</Line>
+      ),
+    );
+    // the restart isn't over at the 1200-baud touch: the step lasts until the bootloader is up on usb
+    if (job.boot !== "no") {
+      const booting = job.step === "boot";
+      lines.push(
+        <Line key="boot" mark={booting ? "now" : "done"} id={booting ? "booting" : "booted"}>
+          {booting ? "restarting the card into its bootloader" : "the card is in its bootloader"}
+        </Line>,
+      );
+    }
+    if (job.step === "pick")
+      lines.push(
+        <Line key="pick" mark="wait" id="pick">
+          <div className="mk1-job-pick">
+            <p>
+              {job.boot === "yes"
+                ? "the browser asks this once: pick “RP2350 Boot” in its list."
+                : "unplug the card, hold its button and plug it back in, then pick “RP2350 Boot” in the browser's list."}
+            </p>
+            <button type="button" className="mk1-btn primary" onClick={pick}>pick the bootloader</button>
+            {desk === "linux" && (
+              <div className="mk1-job-note">
+                not in the list? let the browser reach it, then plug the card in again:<Copyable text={UDEV} />
+              </div>
+            )}
+          </div>
+        </Line>,
+      );
+    if (job.wrote) {
+      const mark = job.step === "done" ? "done" : failed ? "fail" : "now";
+      lines.push(
+        <Line key="write" mark={mark} id="write">
+          <Progress value={job.progress} bytes={job.bytes} mark={mark} />
+        </Line>,
+      );
+    }
+    if (job.step === "done")
+      lines.push(
+        <Line key="end" mark="done" id={onCard ? "back" : "restart"}>
+          {onCard ? <>the card is back, on <span className="mono">{onCard}</span></> : "the card restarts with its new firmware"}
+        </Line>,
+      );
+    if (failed && fetched) lines.push(<Line key="fail" mark="fail" id="fail"><Failure job={job} /></Line>);
+    if (job.step === "manual" || (failed && fetched))
+      lines.push(
+        <Line key="manual" mark="wait" id="manual">
+          <ol className="mk1-manual">
+            <li>
+              {fileUrl && <a href={fileUrl} download={job.label.endsWith(".uf2") ? job.label : `mk1-${job.label}.uf2`}>save the .uf2</a>}
+              {fileUrl ? " (if you don't have it yet)" : ""}
+            </li>
+            <li>
+              {job.boot === "yes" ? "the card has restarted into its bootloader" : "unplug the card, hold its button and plug it back in"}:
+              a drive called <span className="mono">RP2350</span> shows up
+            </li>
+            <li>drop the .uf2 onto it. the card restarts with the new firmware by itself</li>
+          </ol>
+          {job.boot !== "yes" && serial && !connected && (
+            <p className="mk1-job-note">or connect the card first and install again: the page restarts it into its bootloader, no unplugging.</p>
+          )}
+          {/* the restart was asked for, not seen: a card that didn't take it still needs the hand */}
+          {job.boot === "yes" && <p className="mk1-job-note">no drive? unplug the card, hold its button and plug it back in.</p>}
+        </Line>,
+      );
+  }
 
   return (
     <section className="mk1-flash card" aria-labelledby="mk1-flash-title">
@@ -159,40 +345,57 @@ export function Flasher({ source, onCard, connected, bootloader, usb, serial, de
       </div>
 
       <div className="mk1-release">
-        {latest.s === "loading" && <p className="mk1-quiet"><LuLoaderCircle className="mk1-spin" size={16} /> looking for the latest release</p>}
-        {latest.s === "none" && <p className="mk1-quiet">no firmware released yet. a .uf2 of your own still goes in below.</p>}
-        {latest.s === "error" && <p className="mk1-quiet">the latest release didn't load: {latest.m}</p>}
-        {rel && (
-          <>
-            <div>
-              <p className="mk1-release-name">
-                latest release{" "}
-                {rel.page ? (
-                  <a className="mono mk1-link" href={rel.page} target="_blank" rel="noreferrer">{rel.version}</a>
-                ) : (
-                  <span className="mono">{rel.version}</span>
-                )}
-                {day(rel.date) && <span className="mk1-quiet"> · {day(rel.date)}</span>}
-              </p>
-              <p className="mk1-quiet">
-                {onCard === null ? "connect the card to compare" : newer ? "newer than the card's" : "the card has it"}
-              </p>
-            </div>
-            <button
-              type="button"
-              className={newer ? "mk1-btn primary" : "mk1-btn"}
-              disabled={busy}
-              onClick={() => install(rel.version, () => download(rel), rel.page)}
+        <Smooth>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={latest.s}
+              className="mk1-release-row"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.12 } }}
+              transition={{ duration: 0.28, ease: EASE }}
             >
-              {onCard !== null && !newer ? "install again" : "install"}
-            </button>
-          </>
-        )}
+              {latest.s === "loading" && <p className="mk1-quiet"><LuLoaderCircle className="mk1-spin" size={16} /> looking for the latest release</p>}
+              {latest.s === "none" && <p className="mk1-quiet">no firmware released yet. a .uf2 of your own still goes in below.</p>}
+              {latest.s === "error" && <p className="mk1-quiet">the latest release didn't load: {latest.m}</p>}
+              {rel && (
+                <>
+                  <div>
+                    <p className="mk1-release-name">
+                      latest release{" "}
+                      {rel.page ? (
+                        <a className="mono mk1-link" href={rel.page} target="_blank" rel="noreferrer">{rel.version}</a>
+                      ) : (
+                        <span className="mono">{rel.version}</span>
+                      )}
+                      {releaseDay(rel.date) && <span className="mk1-release-day"> · {releaseDay(rel.date)}</span>}
+                    </p>
+                    <p className="mk1-release-card">
+                      {card === null ? "connect the card to compare"
+                        : same ? "the card runs it"
+                        : <>the card runs <span className="mono">{card}</span>{newer ? "" : ", a newer one"}</>}
+                    </p>
+                  </div>
+                  <button
+                    ref={installButton}
+                    type="button"
+                    className={newer ? "mk1-btn primary" : "mk1-btn"}
+                    disabled={busy}
+                    onClick={() => install(rel.version, () => download(rel), rel)}
+                  >
+                    <LuDownload size={17} /> {same ? "install again" : "install"}
+                  </button>
+                </>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </Smooth>
       </div>
 
       <div
         className="mk1-drop"
         data-over={over || undefined}
+        data-busy={busy || undefined}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
         onDragLeave={() => setOver(false)}
         onDrop={(e) => { e.preventDefault(); setOver(false); if (!busy) fromFile(e.dataTransfer.files[0]); }}
@@ -205,58 +408,20 @@ export function Flasher({ source, onCard, connected, bootloader, usb, serial, de
         <input ref={picker} type="file" accept=".uf2" hidden onChange={(e) => { fromFile(e.target.files?.[0]); e.target.value = ""; }} />
       </div>
 
-      {job && (
-        <div className="mk1-job" aria-live="polite">
-          <p className="mk1-job-title">installing <span className="mono">{job.label}</span></p>
-          {job.step === "fetch" && <p className="mk1-quiet"><LuLoaderCircle className="mk1-spin" size={16} /> getting the firmware</p>}
-          {job.step === "boot" && <p className="mk1-quiet"><LuLoaderCircle className="mk1-spin" size={16} /> restarting the card into its bootloader</p>}
-          {job.step === "pick" && (
-            <div className="mk1-job-pick">
-              <p>
-                {job.booted
-                  ? "the card restarted into its bootloader. the browser asks this once: pick “RP2350 Boot” in its list."
-                  : "unplug the card, hold its button and plug it back in, then pick “RP2350 Boot” in the browser's list."}
-              </p>
-              <button type="button" className="mk1-btn primary" onClick={pick}>pick the bootloader</button>
-              {desk === "linux" && (
-                <p className="mk1-quiet">
-                  not in the list? let the browser reach it, then plug the card in again:<Copyable text={UDEV} />
-                </p>
-              )}
+      <AnimatePresence initial={false}>
+        {job && (
+          <Unfold key="job" gap={18}>
+            <div className="mk1-job" aria-live="polite">
+              <p className="mk1-job-title">installing <span className="mono">{job.label}</span></p>
+              <Smooth>
+                <ol className="mk1-log">
+                  <AnimatePresence initial={false}>{lines}</AnimatePresence>
+                </ol>
+              </Smooth>
             </div>
-          )}
-          {job.step === "write" && (
-            <div className="mk1-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.progress * 100)}>
-              <div style={{ transform: `scaleX(${job.progress})` }} />
-              <span className="mono">{Math.round(job.progress * 100)}%</span>
-            </div>
-          )}
-          {job.step === "done" && <p className="mk1-ok"><LuCheck size={17} /> done. the card restarts with the new firmware.</p>}
-          {job.step === "fail" && (
-            <p className="mk1-bad">
-              <LuCircleAlert size={17} /> {job.error}
-              {job.page && <> · <a href={job.page} target="_blank" rel="noreferrer">the release page</a></>}
-            </p>
-          )}
-          {(job.step === "manual" || job.step === "fail") && job.file && (
-            <>
-              <ol className="mk1-manual">
-                <li>{fileUrl && <a href={fileUrl} download={job.label.endsWith(".uf2") ? job.label : `mk1-${job.label}.uf2`}>save the .uf2</a>}{fileUrl ? " (if you don't have it yet)" : ""}</li>
-                <li>
-                  {job.booted ? "the card has restarted into its bootloader" : "unplug the card, hold its button and plug it back in"}:
-                  a drive called <span className="mono">RP2350</span> shows up
-                </li>
-                <li>drop the .uf2 onto it. the card restarts with the new firmware by itself</li>
-              </ol>
-              {!job.booted && serial && !connected && (
-                <p className="mk1-quiet">or connect the card first and install again: the page restarts it into its bootloader, no unplugging.</p>
-              )}
-              {/* the restart was asked for, not seen: a card that didn't take it still needs the hand */}
-              {job.booted && <p className="mk1-quiet">no drive? unplug the card, hold its button and plug it back in.</p>}
-            </>
-          )}
-        </div>
-      )}
+          </Unfold>
+        )}
+      </AnimatePresence>
     </section>
   );
 }

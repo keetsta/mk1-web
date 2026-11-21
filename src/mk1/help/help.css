@@ -43,6 +43,7 @@
   color: var(--muted);
 }
 .mk1-tabs {
+  position: relative;
   display: inline-flex;
   gap: 4px;
   padding: 4px;
@@ -51,22 +52,47 @@
   background: var(--card-2);
   justify-self: start;
 }
+/* the chosen tab's paper, under the labels; DeskTabs places it */
+.mk1-tabs-mark {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  box-shadow: var(--sh-xs);
+  transition: transform 340ms var(--ease), width 340ms var(--ease);
+}
 .mk1-tabs button {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   height: 32px;
   padding: 0 14px;
   border-radius: var(--r-pill);
   font-size: 14px;
   font-weight: 500;
   color: var(--muted);
-  transition: background 180ms var(--ease), color 180ms var(--ease);
+  transition: color 180ms var(--ease);
+}
+.mk1-tabs button:hover {
+  color: var(--ink-2);
 }
 .mk1-tabs button[aria-selected="true"] {
-  background: var(--card);
   color: var(--ink);
-  box-shadow: var(--sh-xs);
+}
+/* only the chosen tab shows its icon: the others keep it folded to nothing, gap included */
+.mk1-tabs button svg {
+  flex: none;
+  width: 0;
+  margin-right: 0;
+  opacity: 0;
+  transition: width 340ms var(--ease), margin-right 340ms var(--ease), opacity 220ms var(--ease);
+}
+.mk1-tabs button[aria-selected="true"] svg {
+  width: 15px;
+  margin-right: 6px;
+  opacity: 1;
 }
 .mk1-steps ol {
   display: grid;
@@ -157,4 +183,10 @@ kbd {
 .mk1-note a:hover {
   color: var(--ink);
   text-decoration-color: var(--ink-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk1-tabs-mark,
+  .mk1-tabs button svg {
+    transition: none;
+  }
 }

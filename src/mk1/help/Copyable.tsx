@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Swap } from "../anim";
 import { LuCheck, LuCopy } from "../icons";
 
 /** a command to paste into a terminal, with a copy button */
@@ -15,7 +16,7 @@ export function Copyable({ text }: { text: string }) {
     <div className="mk1-cmd">
       <code className="mono">{text}</code>
       <button type="button" onClick={copy} aria-label={done ? "copied" : "copy"} title={done ? "copied" : "copy"}>
-        {done ? <LuCheck size={16} /> : <LuCopy size={16} />}
+        <Swap id={done ? "done" : "copy"}>{done ? <LuCheck size={16} /> : <LuCopy size={16} />}</Swap>
       </button>
     </div>
   );

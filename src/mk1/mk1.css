@@ -53,9 +53,56 @@
 .mk1-light svg {
   color: var(--muted);
 }
+/* the light: an ink track filled up to the value (--fill, set with it), a paper knob on it */
 .mk1-light input {
+  -webkit-appearance: none;
+  appearance: none;
   width: clamp(120px, 24vw, 200px);
-  accent-color: var(--ink);
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+}
+.mk1-light input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(to right, var(--ink) var(--fill, 50%), var(--line-2) var(--fill, 50%));
+}
+.mk1-light input::-moz-range-track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--line-2);
+}
+.mk1-light input::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--ink);
+}
+.mk1-light input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: var(--sh-sm);
+  transition: transform 160ms var(--ease);
+}
+.mk1-light input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: var(--sh-sm);
+  transition: transform 160ms var(--ease);
+}
+.mk1-light input:active::-webkit-slider-thumb {
+  transform: scale(1.18);
+}
+.mk1-light input:active::-moz-range-thumb {
+  transform: scale(1.18);
 }
 .mk1-light-value {
   min-width: 4ch;
@@ -136,8 +183,18 @@
 .mk1-pill .mono {
   color: var(--ink);
 }
+/* its width is animated to the text's, the padding inside the text and the border outside the width */
 .mk1-status {
   margin-left: auto;
+  padding: 0;
+  overflow: hidden;
+  box-sizing: content-box;
+}
+.mk1-status-text {
+  flex: none;
+  display: inline-flex;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 .mk1-status[data-mode="card"] {
   color: var(--green-ink);
@@ -158,6 +215,20 @@
 }
 .mk1-spin {
   animation: mk1-spin 0.9s linear infinite;
+}
+/* Smooth's content: its margins stay inside the height it measures */
+.mk1-smooth {
+  display: flow-root;
+}
+/* Swap: the icon going and the one coming in the same cell */
+.mk1-swap {
+  display: inline-grid;
+  flex: none;
+}
+.mk1-swap > * {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
 }
 @keyframes mk1-spin {
   to {
@@ -197,6 +268,12 @@
   }
   .mk1-btn:active:not(:disabled) {
     transform: none;
+  }
+  .mk1-light input::-webkit-slider-thumb {
+    transition: none;
+  }
+  .mk1-light input::-moz-range-thumb {
+    transition: none;
   }
 }
 @media (max-width: 640px) {

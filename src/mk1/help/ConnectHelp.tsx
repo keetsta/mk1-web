@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { EASE, Smooth, Swap } from "../anim";
 import { LuCheck, LuCircleAlert, LuShare, LuTerminal, LuUsb } from "../icons";
 import type { Trouble } from "../serial/link";
 import { Copyable } from "./Copyable";
@@ -77,9 +79,39 @@ function SendOn() {
   };
   return (
     <button type="button" className="mk1-send" onClick={send}>
-      {copied ? <LuCheck size={15} /> : <LuShare size={15} />}
+      <Swap id={copied ? "copied" : "share"}>{copied ? <LuCheck size={15} /> : <LuShare size={15} />}</Swap>
       {copied ? "link copied" : "send this page to your computer"}
     </button>
+  );
+}
+
+/** the systems to show steps for. the chosen one's paper slides under it, and its terminal icon opens out
+ *  while the last one's folds away, so the row never jumps */
+function DeskTabs({ desk, onDesk }: { desk: Desk; onDesk(d: Desk): void }) {
+  const list = useRef<HTMLDivElement>(null);
+  const [mark, setMark] = useState<{ x: number; w: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = list.current!;
+    // follows the tab through the icon's own transition, frame by frame, as the sizes change
+    const place = () => {
+      const on = el.querySelector<HTMLElement>('[aria-selected="true"]');
+      if (on) setMark({ x: on.offsetLeft, w: on.offsetWidth });
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    for (const b of el.querySelectorAll("button")) ro.observe(b);
+    return () => ro.disconnect();
+  }, [desk]);
+  return (
+    <div className="mk1-tabs" role="tablist" aria-label="your computer" ref={list}>
+      {mark && <span className="mk1-tabs-mark" style={{ transform: `translateX(${mark.x}px)`, width: mark.w }} aria-hidden="true" />}
+      {(Object.keys(NAMES) as Desk[]).map((d) => (
+        <button key={d} type="button" role="tab" aria-selected={d === desk} onClick={() => onDesk(d)}>
+          <LuTerminal size={15} />
+          {NAMES[d]}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -99,15 +131,22 @@ export function ConnectHelp({ trouble, os, onPick }: { trouble: Trouble; os: Os;
       {trouble === "busy" && (
         <button type="button" className="mk1-btn" onClick={onPick}><LuUsb size={17} /> pick another port</button>
       )}
-      <div className="mk1-tabs" role="tablist" aria-label="your computer">
-        {(Object.keys(NAMES) as Desk[]).map((d) => (
-          <button key={d} type="button" role="tab" aria-selected={d === desk} onClick={() => setDesk(d)}>
-            {d === desk && <LuTerminal size={15} />}
-            {NAMES[d]}
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel" className="mk1-steps">{STEPS[desk]}</div>
+      <DeskTabs desk={desk} onDesk={setDesk} />
+      <Smooth>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={desk}
+            role="tabpanel"
+            className="mk1-steps"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, transition: { duration: 0.12 } }}
+            transition={{ duration: 0.3, ease: EASE }}
+          >
+            {STEPS[desk]}
+          </motion.div>
+        </AnimatePresence>
+      </Smooth>
     </section>
   );
 }

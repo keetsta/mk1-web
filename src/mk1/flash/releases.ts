@@ -87,3 +87,13 @@ export function compareVersions(a: string, b: string): number {
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
   return 0;
 }
+
+/** the release is newer than the card's firmware. compareVersions calls anything that isn't x.y.z newer (NaN
+ *  compares false), so a build stamped otherwise must not read as an update */
+export function isNewer(release: string, card: string | null): boolean {
+  return card !== null && SEMVER.test(release) && SEMVER.test(card) && compareVersions(release, card) > 0;
+}
+
+/** a release's date as the page prints it: "12 nov" */
+export const releaseDay = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toLowerCase() : null;

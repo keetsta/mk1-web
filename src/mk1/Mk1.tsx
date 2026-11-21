@@ -1,7 +1,9 @@
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Flasher } from "./flash/Flasher";
-import type { FirmwareSource } from "./flash/releases";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { EASE, Unfold } from "./anim";
+import { Flasher, useLatest } from "./flash/Flasher";
+import { isNewer, type FirmwareSource } from "./flash/releases";
+import { UpdateBanner } from "./flash/Update";
 import { ConnectHelp, NoAnswer, TerminalNote } from "./help/ConnectHelp";
 import { deskOf, detectOs, isFirefox, usbTrouble } from "./help/platform";
 import { LuCpu, LuLoaderCircle, LuPlay, LuSun, LuUnplug, LuUsb, SiGithub } from "./icons";
@@ -47,8 +49,6 @@ const BLINK = 530; // ms, a terminal's
 /** a card answers the page's hello within a tick (20 ms); a port still quiet after this is not one */
 const HELLO_MS = 1500;
 
-/** the site's --ease */
-const EASE = [0.22, 1, 0.36, 1] as const;
 /** the page's entrance: each block rises into place a little after the one before */
 const rise = (i: number) => ({
   initial: { opacity: 0, y: 14 },
@@ -56,18 +56,38 @@ const rise = (i: number) => ({
   transition: { duration: 0.7, ease: EASE, delay: 0.07 * i },
 });
 
-/** a panel opening under the buttons: grows from nothing, the column's gap included (the -20 margin gives
- *  the gap back only because .mk1 is a flex column: a grid track never goes below zero) */
-function Unfold({ children }: { children: ReactNode }) {
+/** what's connected, in a pill that eases to the width of what it says instead of jumping to it */
+function Status({ text, mode }: { text: string; mode: string }) {
+  const inner = useRef<HTMLSpanElement>(null);
+  const [width, setWidth] = useState<number | "auto">("auto");
+  useLayoutEffect(() => {
+    const el = inner.current!;
+    const ro = new ResizeObserver(() => setWidth(el.offsetWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <motion.div
-      initial={{ opacity: 0, height: 0, marginTop: -20, overflow: "hidden" }}
-      animate={{ opacity: 1, height: "auto", marginTop: 0, transitionEnd: { overflow: "visible" } }}
-      exit={{ opacity: 0, height: 0, marginTop: -20, overflow: "hidden" }}
-      transition={{ duration: 0.42, ease: EASE }}
+    <motion.span
+      className="mk1-pill mk1-status"
+      data-mode={mode}
+      initial={false}
+      animate={{ width }}
+      transition={{ duration: 0.36, ease: EASE }}
     >
-      {children}
-    </motion.div>
+      <span ref={inner} className="mk1-status-text">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={text}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.2, ease: EASE }}
+          >
+            {text}
+          </motion.span>
+        </AnimatePresence>
+      </span>
+    </motion.span>
   );
 }
 
@@ -109,6 +129,11 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   const [silent, setSilent] = useState(false);
   const quiet = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [flashOpen, setFlashOpen] = useState(false);
+  // the panel was opened from the update banner: its install button takes the keyboard
+  const [flashFromBanner, setFlashFromBanner] = useState(false);
+  const latest = useLatest(firmware);
+  // the release whose banner the visitor closed: it stays closed for the visit, a newer one opens it again
+  const [skipped, setSkipped] = useState<string | null>(null);
   const [pressed, setPressed] = useState(false);
   const [lux, setLux] = useState(512);
   const [running, setRunning] = useState(false);
@@ -330,6 +355,13 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   const shown = mode === "idle" ? (blink ? CURSOR : DARK) : screen;
   const termOpen = mode !== "idle" || failed;
 
+  // a release newer than the card that just said hello. the open firmware panel says the same at more length
+  const rel = latest.s === "ok" ? latest.r : null;
+  const update =
+    rel && mode === "card" && card.firmware && isNewer(rel.version, card.firmware) && !flashOpen && skipped !== rel.version
+      ? { release: rel, onCard: card.firmware }
+      : null;
+
   // where this browser can never reach the card (an iPhone, Safari), the shell right here leads, and connect
   // only opens the way round
   const tryFirst = away !== null;
@@ -381,12 +413,29 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
                   <label className="mk1-light">
                     <LuSun size={17} />
                     <span>light</span>
-                    <input type="range" min={0} max={1023} step={1} value={lux} onChange={(e) => setLux(Number(e.target.value))} />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1023}
+                      step={1}
+                      value={lux}
+                      onChange={(e) => setLux(Number(e.target.value))}
+                      style={{ "--fill": `${(lux / 1023) * 100}%` } as CSSProperties}
+                    />
                     <span className="mono mk1-light-value">{lux}</span>
                   </label>
-                  <p className="mk1-hint">
-                    {running ? "space holds the card's button, + and − change the light" : "the card's button works too: press it"}
-                  </p>
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.p
+                      key={running ? "running" : "idle"}
+                      className="mk1-hint"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2, ease: EASE }}
+                    >
+                      {running ? "space holds the card's button, + and − change the light" : "the card's button works too: press it"}
+                    </motion.p>
+                  </AnimatePresence>
                 </div>
               </motion.div>
             )}
@@ -395,24 +444,30 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
 
         <motion.div className="mk1-actions" {...rise(2)}>
           {tryFirst ? <>{tryButton}{connectButton}</> : <>{connectButton}{tryButton}</>}
-          <button type="button" className="mk1-btn" onClick={() => setFlashOpen((o) => !o)} aria-expanded={flashOpen}>
+          <button
+            type="button"
+            className="mk1-btn"
+            onClick={() => { setFlashFromBanner(false); setFlashOpen((o) => !o); }}
+            aria-expanded={flashOpen}
+          >
             <LuCpu size={17} /> firmware
           </button>
           {/* green once the card has said hello, not for a port that only opened */}
-          <span className="mk1-pill mk1-status" data-mode={mode === "card" && !card.live ? "wait" : mode}>
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.span
-                key={status}
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -5 }}
-                transition={{ duration: 0.2, ease: EASE }}
-              >
-                {status}
-              </motion.span>
-            </AnimatePresence>
-          </span>
+          <Status text={status} mode={mode === "card" && !card.live ? "wait" : mode} />
         </motion.div>
+
+        <AnimatePresence initial={false}>
+          {update && (
+            <Unfold key="update">
+              <UpdateBanner
+                release={update.release}
+                onCard={update.onCard}
+                onOpen={() => { setFlashFromBanner(true); setFlashOpen(true); }}
+                onDismiss={() => setSkipped(update.release.version)}
+              />
+            </Unfold>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence initial={false}>
           {picking && firefox && (
@@ -446,6 +501,8 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
             <Unfold key="flash">
               <Flasher
                 source={firmware}
+                latest={latest}
+                focusInstall={flashFromBanner}
                 onCard={card.firmware}
                 connected={mode === "card"}
                 bootloader={toBootloader}

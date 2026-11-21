@@ -131,9 +131,6 @@ export function Flasher({ source, onCard, connected, bootloader, usb, desk, onFl
             <SiGithub size={14} /> {source.github}
           </a>
         )}
-        <span className="mk1-pill">
-          on the card <span className="mono">{onCard ?? "----"}</span>
-        </span>
       </div>
 
       <div className="mk1-release">

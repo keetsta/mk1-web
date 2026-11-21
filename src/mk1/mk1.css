@@ -25,12 +25,6 @@
   letter-spacing: -0.045em;
   color: var(--ink);
 }
-.mk1-head p {
-  max-width: 620px;
-  margin-top: 16px;
-  font-size: 17px;
-  color: var(--ink-2);
-}
 .mk1-stage {
   display: grid;
   justify-items: center;

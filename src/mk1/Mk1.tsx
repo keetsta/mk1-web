@@ -255,7 +255,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
 
   const status =
     mode === "try" ? "the shell, running in your browser"
-    : mode === "card" ? (card.live ? `card on usb · firmware ${card.firmware ?? "----"}` : "card on usb")
+    : mode === "card" ? `firmware ${card.firmware ?? "----"}`
     : connecting ? "connecting"
     : "nothing connected";
 
@@ -267,10 +267,9 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
       <section className="mk1">
         <header className="mk1-head">
           <motion.h1 {...rise(0)}>mk-1</motion.h1>
-          <motion.p {...rise(1)}>my business card, with a shell inside. plug it into usb-c and program its 16×9 led screen.</motion.p>
         </header>
 
-        <motion.div className="mk1-stage" {...rise(2)}>
+        <motion.div className="mk1-stage" {...rise(1)}>
           {/* pressable whenever no real card is on: with one, the card's own button is the one that counts */}
           <CardStage screen={shown} pressable={mode !== "card"} pressed={pressed} onPress={setPressed} />
           <AnimatePresence initial={false}>
@@ -299,7 +298,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
           </AnimatePresence>
         </motion.div>
 
-        <motion.div className="mk1-actions" {...rise(3)}>
+        <motion.div className="mk1-actions" {...rise(2)}>
           {mode === "card" ? (
             <button type="button" className="mk1-btn" onClick={closeCard}><LuUnplug size={17} /> disconnect</button>
           ) : (
@@ -361,11 +360,11 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
         </Fold>
 
         {/* the help panel above says the same at more length */}
-        <Fold open={!trouble} enter={4}>
+        <Fold open={!trouble} enter={3}>
           <TerminalNote trouble={away} os={os} />
         </Fold>
 
-        <motion.footer className="mk1-foot" {...rise(5)}>
+        <motion.footer className="mk1-foot" {...rise(4)}>
           <a href={`https://github.com/${source.repo}`} target="_blank" rel="noreferrer">
             <SiGithub size={14} /> {source.repo}
           </a>

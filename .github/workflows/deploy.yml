@@ -1,0 +1,92 @@
+name: Deploy mk-1 web
+
+on:
+  push:
+    branches: [main, preview]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mk1-web-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/preview'
+    runs-on: ubuntu-24.04
+    environment:
+      name: ${{ github.ref_name }}
+      url: ${{ github.ref_name == 'main' && 'https://keetsta.me/mk1/' || 'https://preview.keetsta.me/mk1/' }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Read the pinned firmware revision
+        id: shell-revision
+        run: |
+          revision=$(git ls-tree HEAD -- shell | awk '$1 == "160000" { print $3 }')
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          printf 'sha=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: keetsta/mk1-shell
+          ref: ${{ steps.shell-revision.outputs.sha }}
+          path: shell
+          ssh-key: ${{ secrets.SHELL_READ_KEY }}
+          ssh-strict: true
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install Zig 0.16.0
+        run: |
+          venv="$RUNNER_TEMP/mk1-zig"
+          python3 -m venv "$venv"
+          "$venv/bin/python" -m pip install --disable-pip-version-check ziglang==0.16.0
+          zig_dir=$("$venv/bin/python" -c 'from pathlib import Path; import ziglang; print(Path(ziglang.__file__).parent)')
+          test "$("$zig_dir/zig" version)" = '0.16.0'
+          printf '%s\n' "$zig_dir" >> "$GITHUB_PATH"
+
+      - name: Build and test the web release
+        run: |
+          npm ci
+          npm run wasm
+          npm test
+          npm run build -- --base /mk1/
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'mk1-deploy' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?}" "${DEPLOY_SSH_KEY:?}" "${DEPLOY_KNOWN_HOSTS:?}"
+          scratch=$(mktemp -d "$RUNNER_TEMP/mk1-web.XXXXXX")
+          trap 'rm -rf -- "$scratch"' EXIT
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$scratch/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$scratch/known_hosts"
+          unset DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS
+
+          web="$scratch/web"
+          install -m 644 -D dist/index.html "$web/mk1/index.html"
+          install -m 644 -D dist/mk1/top/index.html "$web/mk1/top/index.html"
+          cp -a dist/assets "$web/mk1/assets"
+
+          tar -C "$web" -czf - mk1 | ssh -F /dev/null -T -i "$scratch/key" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o GlobalKnownHostsFile=/dev/null -o UserKnownHostsFile="$scratch/known_hosts" -o ConnectTimeout=15 \
+            -- "$DEPLOY_USER@$DEPLOY_HOST" "deploy $GITHUB_REF_NAME $GITHUB_SHA"

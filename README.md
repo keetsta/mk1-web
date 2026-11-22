@@ -60,3 +60,18 @@ node tools/shot.mjs shots update              # карта на старой п�
 сборка включает `dist/mk1/top/index.html`. при встраивании в основной сайт смонтируй `<Mk1Top />` из `src/mk1` на `/mk1/top/` и обслуживай также `/mk1/top`, который печатает прошивка. api `/mk1/api/leaderboard` проксируется в сервис из `server/` репозитория mk1-shell.
 
 для локальной проверки запусти сервис из mk1-shell на `127.0.0.1:8787` и открой `/mk1/top` на dev-сервере. vite проксирует api на этот порт по умолчанию. `MK1_API_ORIGIN` задаёт другой адрес.
+
+## развёртывание
+
+- push в `main` публикует [keetsta.me/mk1](https://keetsta.me/mk1/), push в `preview` публикует [preview.keetsta.me/mk1](https://preview.keetsta.me/mk1/). обе ветки можно развернуть вручную из GitHub Actions.
+- workflow собирает wasm из закреплённого коммита `shell/`, запускает тесты, собирает vite с base `/mk1/` и передаёт архив по ssh.
+- caddy отдаёт фронтенд из `/srv/mk1-web/<ветка>/current`. публикация uf2 и сервис лидерборда управляются отдельно. preview показывает текущую таблицу и принимает только запросы чтения.
+
+общий секрет `SHELL_READ_KEY` даёт только чтение `mk1-shell`. в окружениях `main` и `preview` свои `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` и переменная `DEPLOY_HOST`. ключи публикации привязаны к отдельным веткам в `authorized_keys` пользователя `mk1-deploy`.
+
+`deploy/receive.py` установлен на сервере как `/srv/mk1-web/bin/receive`. он атомарно переключает `current` и хранит пять последних релизов на ветку. список и откат доступны администратору сервера.
+
+```sh
+sudo -u mk1-deploy /srv/mk1-web/bin/receive main list
+sudo -u mk1-deploy /srv/mk1-web/bin/receive main rollback <release>
+```

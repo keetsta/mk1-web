@@ -2,7 +2,7 @@ name: Deploy mk-1 web
 
 on:
   push:
-    branches: [main, preview]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,11 +14,11 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/preview'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     environment:
-      name: ${{ github.ref_name }}
-      url: ${{ github.ref_name == 'main' && 'https://keetsta.me/mk1/' || 'https://preview.keetsta.me/mk1/' }}
+      name: main
+      url: https://keetsta.me/mk1/
     defaults:
       run:
         shell: bash

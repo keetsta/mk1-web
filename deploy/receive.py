@@ -12,7 +12,6 @@ import tempfile
 import zlib
 
 
-BRANCHES = {"main", "preview"}
 SHA = re.compile(r"[0-9a-f]{40}")
 RELEASE = re.compile(r"[0-9]{20}-[0-9a-f]{12}")
 MAX_UPLOAD = 32 * 1024 * 1024
@@ -127,7 +126,7 @@ def deploy(directory, releases, sha):
 
 def receive():
     args = sys.argv[1:]
-    if not args or args[0] not in BRANCHES:
+    if not args or args[0] != "main":
         raise ValueError("invalid deployment branch")
     branch, *local = args
     command = os.environ.get("SSH_ORIGINAL_COMMAND")
@@ -136,7 +135,7 @@ def receive():
         if local or len(fields) != 3 or fields[:2] != ["deploy", branch] or not SHA.fullmatch(fields[2]):
             raise ValueError("expected deploy for the configured branch and a full commit sha")
     elif local != ["list"] and (len(local) != 2 or local[0] != "rollback" or not RELEASE.fullmatch(local[1])):
-        raise ValueError("usage: receive <main|preview> list | rollback <release>")
+        raise ValueError("usage: receive main list | rollback <release>")
 
     directory = Path(__file__).resolve().parent.parent / branch
     releases = directory / "releases"

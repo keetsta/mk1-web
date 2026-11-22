@@ -63,13 +63,13 @@ node tools/shot.mjs shots update              # карта на старой п�
 
 ## развёртывание
 
-- push в `main` публикует [keetsta.me/mk1](https://keetsta.me/mk1/), push в `preview` публикует [preview.keetsta.me/mk1](https://preview.keetsta.me/mk1/). обе ветки можно развернуть вручную из GitHub Actions.
+- push в `main` публикует [keetsta.me/mk1](https://keetsta.me/mk1/). деплой также можно запустить вручную из GitHub Actions для `main`.
 - workflow собирает wasm из закреплённого коммита `shell/`, запускает тесты, собирает vite с base `/mk1/` и передаёт архив по ssh.
-- caddy отдаёт фронтенд из `/srv/mk1-web/<ветка>/current`. публикация uf2 и сервис лидерборда управляются отдельно. preview показывает текущую таблицу и принимает только запросы чтения.
+- caddy отдаёт фронтенд из `/srv/mk1-web/main/current`. публикация uf2 и сервис лидерборда управляются отдельно.
 
-общий секрет `SHELL_READ_KEY` даёт только чтение `mk1-shell`. в окружениях `main` и `preview` свои `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` и переменная `DEPLOY_HOST`. ключи публикации привязаны к отдельным веткам в `authorized_keys` пользователя `mk1-deploy`.
+секрет `SHELL_READ_KEY` даёт только чтение `mk1-shell`. окружение `main` хранит `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` и переменную `DEPLOY_HOST`. ключ публикации ограничен командой деплоя `main` в `authorized_keys` пользователя `mk1-deploy`.
 
-`deploy/receive.py` установлен на сервере как `/srv/mk1-web/bin/receive`. он атомарно переключает `current` и хранит пять последних релизов на ветку. список и откат доступны администратору сервера.
+`deploy/receive.py` установлен на сервере как `/srv/mk1-web/bin/receive`. он атомарно переключает `current` и хранит пять последних релизов. список и откат доступны администратору сервера.
 
 ```sh
 sudo -u mk1-deploy /srv/mk1-web/bin/receive main list

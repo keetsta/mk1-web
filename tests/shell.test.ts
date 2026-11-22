@@ -5,22 +5,28 @@ import { createShell } from "../src/mk1/shell/core.ts";
 
 const wasm = readFileSync(new URL("../src/mk1/shell/mk1-shell.wasm", import.meta.url));
 
-async function boot() {
+async function boot(connected = true) {
   let out = "";
-  const frames: Uint16Array[] = [];
+  const frames: Uint8Array[] = [];
   let saved: Uint8Array | null = null;
   const t = { btn: false, lux: 512 };
   const shell = await createShell(wasm, {
     write: (b) => { out += new TextDecoder().decode(b); },
-    frame: (rows) => frames.push(rows.slice()),
+    frame: (levels) => frames.push(levels.slice()),
     button: () => t.btn,
     lux: () => t.lux,
     load: () => saved,
     save: (s) => { saved = s; },
     exit: () => { out += "<exit>"; },
   });
+  const tick = (n = 1) => { for (let i = 0; i < n; i++) shell.tick(); };
+  if (connected) {
+    tick(32);
+    shell.connect();
+    tick(16);
+  }
   const type = (s: string) => { out = ""; shell.input(new TextEncoder().encode(s)); return out; };
-  return { shell, type, frames, t, get out() { return out; }, saved: () => saved };
+  return { shell, type, tick, frames, t, get out() { return out; }, saved: () => saved };
 }
 
 test("the real shell runs in WebAssembly: banner, help, the manual", async () => {
@@ -31,9 +37,10 @@ test("the real shell runs in WebAssembly: banner, help, the manual", async () =>
 });
 
 test("the matrix reaches the page as frames, and there is no buzzer", async () => {
-  const { type, frames } = await boot();
+  const { type, tick, frames } = await boot();
   type("try mov 0xffff pix\r");
-  assert.equal(frames.at(-1)![0], 0xffff);
+  tick();
+  assert.ok(frames.at(-1)!.slice(0, 16).every((v) => v === 255));
   assert.match(type("try mov 440 bz\r"), /what is 'bz'\?/);
 });
 
@@ -46,7 +53,7 @@ test("a program sees the page's button and light, and the task can be solved", a
   assert.ok(s.shell.running());
   s.t.btn = true;
   for (let i = 0; i < 3; i++) s.shell.tick();
-  assert.equal(s.frames.at(-1)![8], 0xffff);
+  assert.ok(s.frames.at(-1)!.slice(128).every((v) => v === 255));
   s.type("\x03");
   assert.match(s.type("check\r"), /task 1 passed[\s\S]*chapter 1 unlocked/);
   assert.ok(s.saved()!.length > 2000);
@@ -59,4 +66,28 @@ test("ctrl-d tells the page, sudo still brings the dragon", async () => {
   const before = frames.length;
   for (let i = 0; i < 30; i++) shell.tick();
   assert.ok(frames.length > before);
+});
+
+test("the firmware animates boot, shell entry and return to standby", async () => {
+  const { shell, type, tick, frames } = await boot(false);
+  const partial = (levels: Uint8Array) => levels.some((v) => v > 0 && v < 255);
+  tick(12);
+  assert.ok(frames.length > 5 && frames.some(partial));
+  tick(20);
+  const standby = frames.at(-1)!;
+  assert.equal(standby[0], 0);
+  assert.ok(partial(standby));
+
+  shell.connect();
+  type("try mov 0xffff pix\r");
+  tick(8);
+  assert.ok(partial(frames.at(-1)!));
+  tick(8);
+  assert.ok(frames.at(-1)!.slice(0, 16).every((v) => v === 255));
+
+  type("\x04");
+  tick(8);
+  assert.ok(partial(frames.at(-1)!));
+  tick(6);
+  assert.deepEqual(frames.at(-1), standby);
 });

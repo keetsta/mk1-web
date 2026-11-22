@@ -8,6 +8,10 @@ export const LEDS = 16 * 9;
 
 export const dark = (): Screen => new Float32Array(LEDS);
 
+export function fromLevels(levels: ArrayLike<number>): Screen {
+  return Float32Array.from(levels, (level) => level / 255);
+}
+
 /** how far toward its lit colour an LED is drawn. On the card any light stands out against the unlit LED; on
  *  a screen a lit LED is only a colour mixed over the pale lens, and a third of the way to red reads as nearly
  *  off (half the cube's lit LEDs are a third lit or less). The square root lifts the low levels and leaves off

@@ -1,11 +1,10 @@
-/* The card's shell compiled to WebAssembly (wasm/hal_wasm.c + the mk1-shell core): the same code the
-   firmware runs, here with a JS HAL. No Vite imports, so tests can load it under Node. */
+import { LEDS } from "../screen.ts";
 
 export type Hal = {
   /** bytes the shell prints, already with \r\n */
   write(bytes: Uint8Array): void;
-  /** the matrix changed (9 rows, bit 15 = left column) */
-  frame(rows: Uint16Array): void;
+  /** the matrix changed (144 brightness levels, row 0 first) */
+  frame(levels: Uint8Array): void;
   button(): boolean;
   /** light level 0..1023 */
   lux(): number;
@@ -16,6 +15,8 @@ export type Hal = {
 };
 
 export type Shell = {
+  connect(): void;
+  disconnect(): void;
   input(bytes: Uint8Array): void;
   /** call every 20 ms */
   tick(): void;
@@ -27,8 +28,10 @@ type Exports = {
   memory: WebAssembly.Memory;
   _initialize(): void;
   init(): void;
+  connect(): void;
+  disconnect(): void;
   input(c: number): void;
-  tick(): void;
+  tick(rnd: number): void;
   running(): number;
 };
 
@@ -38,7 +41,7 @@ export async function createShell(wasm: BufferSource, hal: Hal): Promise<Shell> 
   const { instance } = await WebAssembly.instantiate(wasm, {
     mk1: {
       write: (p: number, n: number) => hal.write(bytes(p, n).slice()),
-      matrix: (p: number) => hal.frame(new Uint16Array(memory!.buffer.slice(p, p + 18))),
+      screen: (p: number) => hal.frame(bytes(p, LEDS).slice()),
       button: () => (hal.button() ? 1 : 0),
       lux: () => Math.max(0, Math.min(1023, Math.round(hal.lux()))),
       load: (p: number, n: number) => {
@@ -56,8 +59,10 @@ export async function createShell(wasm: BufferSource, hal: Hal): Promise<Shell> 
   ex._initialize();
   ex.init();
   return {
+    connect: () => ex.connect(),
+    disconnect: () => ex.disconnect(),
     input: (data) => data.forEach((c) => ex.input(c)),
-    tick: () => ex.tick(),
+    tick: () => ex.tick(Math.floor(Math.random() * 0x100000000)),
     running: () => ex.running() !== 0,
   };
 }

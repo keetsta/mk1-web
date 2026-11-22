@@ -1,14 +1,16 @@
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { EASE, Unfold } from "./anim";
+import { PublishResult } from "./board/PublishResult";
 import { Flasher, useLatest } from "./flash/Flasher";
 import { isNewer, type FirmwareSource } from "./flash/releases";
 import { UpdateBanner } from "./flash/Update";
 import { ConnectHelp, NoAnswer, TerminalNote } from "./help/ConnectHelp";
 import { deskOf, detectOs, isFirefox, usbTrouble } from "./help/platform";
-import { LuCpu, LuLoaderCircle, LuPlay, LuSun, LuUnplug, LuUsb, SiGithub } from "./icons";
+import { LuCpu, LuLoaderCircle, LuPlay, LuSun, LuTrophy, LuUnplug, LuUsb, SiGithub } from "./icons";
 import { CardStage } from "./preview/CardStage";
-import { dark, fromRows, type Screen } from "./screen";
+import { dark, fromLevels, type Screen } from "./screen";
+import { BoardReader } from "./serial/board";
 import { LinkError, askCard, knownCard, openCard, serialTrouble, type CardLink, type Trouble } from "./serial/link";
 import type { Shell } from "./shell/core";
 import { loadShell } from "./shell/load";
@@ -42,10 +44,6 @@ const DEFAULT_FIRMWARE: FirmwareSource = { manifest: "/mk1/firmware/latest.json"
 export type Source = { repo: string; commit?: string; label?: string };
 const BUILD = typeof __MK1_BUILD__ === "object" && __MK1_BUILD__ ? __MK1_BUILD__ : null;
 const DEFAULT_SOURCE: Source = { repo: "keetsta/mk1-web", ...BUILD };
-/** with nothing connected the card waits as it does on a desk: a cursor blinking at the matrix's left */
-const CURSOR = fromRows([0, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0x7000, 0]);
-const DARK = dark();
-const BLINK = 530; // ms, a terminal's
 /** a card answers the page's hello within a tick (20 ms); a port still quiet after this is not one */
 const HELLO_MS = 1500;
 
@@ -120,6 +118,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   const firefox = useMemo(isFirefox, []);
   const [mode, setMode] = useState<Mode>("idle");
   const [screen, setScreen] = useState<Screen>(dark);
+  const [tryScreen, setTryScreen] = useState<Screen>(dark);
   const [card, setCard] = useState<{ live: boolean; firmware: string | null }>({ live: false, firmware: null });
   const [trouble, setTrouble] = useState<Trouble | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -137,16 +136,17 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   const [pressed, setPressed] = useState(false);
   const [lux, setLux] = useState(512);
   const [running, setRunning] = useState(false);
-  const [blink, setBlink] = useState(true);
+  const [boardToken, setBoardToken] = useState("");
 
   const term = useRef<TermHandle>(null);
   const shell = useRef<Shell | null>(null);
+  const shellLoad = useRef<Promise<Shell> | null>(null);
+  const trySession = useRef<symbol | null>(null);
   const link = useRef<CardLink | null>(null);
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const inputs = useRef({ pressed, lux });
   inputs.current = { pressed, lux };
-  const tryScreen = useRef<Screen>(dark());
   const reconnect = useRef(false);
   // try it's shell didn't load: the terminal stays open with the reason in it
   const [failed, setFailed] = useState(false);
@@ -156,60 +156,75 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     if (mode !== "idle") term.current?.focus();
   }, [mode]);
 
-  useEffect(() => {
-    if (mode !== "idle") return;
-    setBlink(true);
-    const id = setInterval(() => setBlink((b) => !b), BLINK);
-    return () => clearInterval(id);
-  }, [mode]);
+  const getShell = useCallback(() => {
+    return shellLoad.current ??= loadShell({
+      write: (bytes) => {
+        if (shell.current && trySession.current) term.current?.write(bytes);
+      },
+      frame: (levels) => setTryScreen(fromLevels(levels)),
+      button: () => inputs.current.pressed,
+      lux: () => inputs.current.lux,
+      load: loadState,
+      save: saveState,
+      exit: () => {},
+    }).then((s) => {
+      shell.current = s;
+      return s;
+    }, (error: unknown) => {
+      shellLoad.current = null;
+      throw error;
+    });
+  }, []);
 
-  // try it: the shell's clock, and whether a program holds the foreground
   useEffect(() => {
-    if (mode !== "try") return;
+    void getShell().catch(() => {});
     const id = setInterval(() => {
       const s = shell.current;
-      if (!s) return;
+      if (!s || modeRef.current === "card") return;
       s.tick();
-      setRunning(s.running());
+      if (trySession.current) setRunning(s.running());
     }, 20);
     return () => clearInterval(id);
-  }, [mode]);
+  }, [getShell]);
 
   const closeCard = async () => {
     const l = link.current;
     link.current = null;
+    setBoardToken("");
     if (l) await l.close();
   };
 
-  const startTry = async () => {
+  const endTry = useCallback(() => {
+    trySession.current = null;
+    shell.current?.disconnect();
+    setPressed(false);
+  }, []);
+
+  const toggleTry = async () => {
     setTrouble(null);
-    if (modeRef.current === "try") return term.current?.focus();
-    setFailed(false);
-    await closeCard();
-    term.current?.clear();
-    setScreen(tryScreen.current);
-    setMode("try");
-    if (shell.current) {
-      shell.current.input(Uint8Array.of(13)); // back to a fresh prompt
-    } else {
-      try {
-        shell.current = await loadShell({
-          write: (b) => term.current?.write(b),
-          frame: (r) => {
-            tryScreen.current = fromRows(r);
-            if (modeRef.current === "try") setScreen(tryScreen.current);
-          },
-          button: () => inputs.current.pressed,
-          lux: () => inputs.current.lux,
-          load: loadState,
-          save: saveState,
-          exit: () => {},
-        });
-      } catch (e) {
-        term.current?.write(`\r\n${e instanceof Error ? e.message : e}\r\n`);
-        setFailed(true);
-        setMode("idle");
-      }
+    if (trySession.current || failed) {
+      endTry();
+      setFailed(false);
+      setMode("idle");
+      return;
+    }
+    const session = Symbol();
+    trySession.current = session;
+    try {
+      await closeCard();
+      if (trySession.current !== session) return;
+      term.current?.clear();
+      setMode("try");
+      const s = await getShell();
+      if (trySession.current !== session) return;
+      setRunning(s.running());
+      s.connect();
+    } catch (e) {
+      if (trySession.current !== session) return;
+      endTry();
+      term.current?.write(`\r\n${e instanceof Error ? e.message : e}\r\n`);
+      setFailed(true);
+      setMode("idle");
     }
   };
 
@@ -220,8 +235,13 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     try {
       await closeCard();
       let hello = false;
+      const board = new BoardReader(setBoardToken);
+      setScreen(dark());
       const l = await openCard(port, {
-        text: (b) => term.current?.write(b),
+        text: (b) => {
+          term.current?.write(b);
+          board.feed(b);
+        },
         message: (m) => {
           if (m.kind === "hello") {
             hello = true;
@@ -231,6 +251,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
         },
         closed: (lost) => {
           if (link.current === l) link.current = null;
+          setBoardToken("");
           setSilent(false);
           setCard({ live: false, firmware: null });
           setMode((m) => (m === "card" ? "idle" : m));
@@ -238,8 +259,8 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
         },
       });
       link.current = l;
+      endTry();
       term.current?.clear();
-      setScreen(dark());
       setMode("card");
       clearTimeout(quiet.current);
       quiet.current = setTimeout(() => {
@@ -250,7 +271,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     } finally {
       setConnecting(false);
     }
-  }, []);
+  }, [endTry]);
 
   /** fresh: the browser's list even when the site knows a port, for when the one it knows isn't the card */
   const connectCard = async (fresh = false) => {
@@ -352,7 +373,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     : connecting ? "connecting"
     : "nothing connected";
 
-  const shown = mode === "idle" ? (blink ? CURSOR : DARK) : screen;
+  const shown = mode === "card" ? screen : tryScreen;
   const termOpen = mode !== "idle" || failed;
 
   // a release newer than the card that just said hello. the open firmware panel says the same at more length
@@ -382,8 +403,8 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     <button
       type="button"
       className={tryFirst && mode !== "try" ? "mk1-btn primary" : "mk1-btn"}
-      onClick={startTry}
-      aria-pressed={mode === "try"}
+      onClick={toggleTry}
+      aria-pressed={mode === "try" || failed}
     >
       <LuPlay size={17} /> try it here
     </button>
@@ -523,12 +544,21 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
           </div>
         </Fold>
 
+        <AnimatePresence initial={false}>
+          {mode === "card" && boardToken && (
+            <Unfold key="board-result">
+              <PublishResult key={boardToken} token={boardToken} />
+            </Unfold>
+          )}
+        </AnimatePresence>
+
         {/* the help panel above says the same at more length */}
         <Fold open={!trouble} enter={3}>
           <TerminalNote trouble={away} os={os} />
         </Fold>
 
         <motion.footer className="mk1-foot" {...rise(4)}>
+          <a href="/mk1/top/"><LuTrophy size={14} /> leaderboard</a>
           <a href={`https://github.com/${source.repo}`} target="_blank" rel="noreferrer">
             <SiGithub size={14} /> {source.repo}
           </a>

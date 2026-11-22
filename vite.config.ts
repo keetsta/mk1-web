@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 /** the commit this build runs, for the page's footer; `label` says -dirty when the tree had changes */
@@ -16,4 +17,15 @@ function build() {
 export default defineConfig({
   plugins: [react()],
   define: { __MK1_BUILD__: JSON.stringify(build()) },
+  build: {
+    rollupOptions: {
+      input: [
+        fileURLToPath(new URL("./index.html", import.meta.url)),
+        fileURLToPath(new URL("./mk1/top/index.html", import.meta.url)),
+      ],
+    },
+  },
+  server: {
+    proxy: { "/mk1/api": process.env.MK1_API_ORIGIN ?? "http://127.0.0.1:8787" },
+  },
 });

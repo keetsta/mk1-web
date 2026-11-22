@@ -40,41 +40,44 @@
 .mk1-top-import {
   border-top: 1px solid var(--line);
 }
-.mk1-top-import summary {
+.mk1-top-import-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   min-height: 54px;
   padding: 12px var(--card-pad);
-  list-style: none;
   color: var(--ink);
   font-size: 16px;
   font-weight: 600;
-  cursor: pointer;
+  text-align: left;
+  transition: background 200ms var(--ease);
 }
-.mk1-top-import summary::-webkit-details-marker {
-  display: none;
-}
-.mk1-top-import summary:hover {
+.mk1-top-import-toggle:hover {
   background: var(--card-2);
 }
-.mk1-top-import summary:focus-visible {
+.mk1-top-import-toggle:focus-visible {
   outline-offset: -4px;
 }
-.mk1-top-import summary svg {
+.mk1-top-import-toggle svg {
   flex: none;
   color: var(--muted);
 }
 .mk1-top-import-chevron {
   margin-inline-start: auto;
+  transition: transform 440ms var(--ease);
 }
-.mk1-top-import[open] .mk1-top-import-chevron {
+.mk1-top-import-toggle[aria-expanded="true"] .mk1-top-import-chevron {
   transform: rotate(180deg);
 }
+.mk1-top-import-window {
+  overflow: hidden;
+}
 .mk1-top-import-body {
-  display: grid;
-  gap: 16px;
   padding: 4px var(--card-pad) var(--card-pad);
+}
+.mk1-import-error {
+  padding-top: 12px;
 }
 .mk1-board-input {
   box-sizing: border-box;
@@ -107,17 +110,86 @@
 .mk1-top-problem {
   color: var(--del);
 }
-.mk1-top-success {
+.mk1-publish-panel {
+  padding: var(--card-pad);
+}
+.mk1-top-import-body .mk1-publish-panel {
+  padding: 18px 0 0;
+}
+.mk1-publish-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.mk1-publish-mark {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  border-radius: var(--r-md);
+  background: var(--sky);
+  color: var(--blue);
+  transition: background 340ms var(--ease), color 340ms var(--ease);
+  overflow: hidden;
+}
+.mk1-publish-panel[data-phase="published"] .mk1-publish-mark {
+  background: var(--mint);
   color: var(--green-ink);
+}
+.mk1-publish-panel[data-phase="failed"] .mk1-publish-mark {
+  background: var(--cream);
+  color: var(--orange-ink);
+}
+.mk1-publish-status {
+  min-width: 0;
+  line-height: 1.25;
+}
+.mk1-publish-status strong {
+  font-size: 17px;
+  font-weight: 650;
+}
+.mk1-publish-status bdi {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.mk1-publish-board {
+  grid-column: 3;
+  justify-content: center;
+}
+.mk1-publish-line {
+  height: 2px;
+  margin-block: 16px;
+  background: var(--line);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.mk1-publish-line span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 520ms var(--ease), background 320ms var(--ease);
+}
+.mk1-publish-panel[data-phase="sending"] .mk1-publish-line span {
+  animation: mk1-publish-verifying 1.05s ease-in-out infinite;
+}
+.mk1-publish-panel[data-phase="published"] .mk1-publish-line span {
+  background: var(--green-ink);
+  transform: scaleX(1);
+}
+@keyframes mk1-publish-verifying {
+  from { transform: translateX(-30%) scaleX(0.3); }
+  to { transform: translateX(100%) scaleX(0.3); }
 }
 .mk1-publish-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
   gap: 12px 20px;
-}
-.mk1-publish-panel {
-  padding: var(--card-pad);
 }
 .mk1-publish-nickname {
   display: grid;
@@ -144,6 +216,32 @@
 }
 .mk1-publish-form [role="alert"] {
   grid-column: 1 / -1;
+}
+.mk1-publish-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card-2);
+  overflow: hidden;
+}
+.mk1-publish-stats > div {
+  padding: 13px 16px;
+  border-inline-start: 1px solid var(--line);
+}
+.mk1-publish-stats > div:first-child {
+  border-inline-start: 0;
+}
+.mk1-publish-stats dt {
+  color: var(--muted);
+  font-size: 14px;
+}
+.mk1-publish-stats dd {
+  margin: 3px 0 0;
+  font-size: clamp(20px, 3vw, 28px);
+  font-weight: 650;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 .mk1-top-board {
   overflow: hidden;
@@ -175,6 +273,13 @@
 }
 .mk1-top-board tbody tr {
   border-top: 1px solid var(--line);
+}
+.mk1-top-fresh {
+  animation: mk1-top-published 1.45s var(--ease) both;
+}
+@keyframes mk1-top-published {
+  from { background: color-mix(in srgb, var(--green-ink) 18%, var(--card)); }
+  to { background: var(--card); }
 }
 .mk1-top-board tbody td,
 .mk1-top-board thead th {
@@ -214,5 +319,31 @@
     display: flex;
     align-items: baseline;
     gap: 8px;
+  }
+  .mk1-publish-board {
+    grid-column: 1 / -1;
+  }
+  .mk1-publish-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mk1-publish-stats > div:nth-child(odd) {
+    border-inline-start: 0;
+  }
+  .mk1-publish-stats > div:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk1-top-import-chevron,
+  .mk1-publish-line span {
+    transition: none;
+  }
+  .mk1-publish-panel[data-phase="sending"] .mk1-publish-line span {
+    animation: none;
+    transform: scaleX(0.3);
+  }
+  .mk1-top-fresh,
+  .mk1-publish-mark .mk1-spin {
+    animation: none;
   }
 }

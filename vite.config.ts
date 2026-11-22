@@ -15,7 +15,15 @@ function build() {
 
 // the demo page; on keetsta.me the module is built by the site's own Vite (it defines __MK1_BUILD__ the same way)
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), {
+    name: "mk1-render-blocking-entry",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      // Vite replaces the source tag, dropping the attribute needed to capture the first React frame.
+      handler: (html) => html.replace(/<script\b(?=[^>]*\btype="module")(?=[^>]*\bsrc=)/, '<script blocking="render"'),
+    },
+  }],
   define: { __MK1_BUILD__: JSON.stringify(build()) },
   build: {
     rollupOptions: {

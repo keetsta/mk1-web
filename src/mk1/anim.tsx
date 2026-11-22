@@ -7,12 +7,13 @@ export const EASE = [0.22, 1, 0.36, 1] as const;
 /** a panel opening where it stands: grows from nothing, its gap to the block above included (the negative
  *  margin gives the gap back only in a flex column: a grid track never goes below zero) */
 export function Unfold({ children, gap = 20 }: { children: ReactNode; gap?: number }) {
+  const still = useReducedMotion();
   return (
     <motion.div
       initial={{ opacity: 0, height: 0, marginTop: -gap, overflow: "hidden" }}
       animate={{ opacity: 1, height: "auto", marginTop: 0, transitionEnd: { overflow: "visible" } }}
       exit={{ opacity: 0, height: 0, marginTop: -gap, overflow: "hidden" }}
-      transition={{ duration: 0.42, ease: EASE }}
+      transition={{ duration: still ? 0 : 0.42, ease: EASE }}
     >
       {children}
     </motion.div>

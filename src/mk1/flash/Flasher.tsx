@@ -6,7 +6,7 @@ import type { Desk } from "../help/platform";
 import { LuCheck, LuCircleAlert, LuCircleDot, LuCpu, LuDownload, LuFileUp, LuLoaderCircle, SiGithub } from "../icons";
 import { Picoboot, RP2350_BOOT } from "./picoboot";
 import { download, isNewer, latestRelease, releaseDay, type FirmwareSource, type Release } from "./releases";
-import { parseUf2, type Image } from "./uf2";
+import { MAX_UF2_BYTES, parseUf2, type Image } from "./uf2";
 import "./flash.css";
 
 export type Latest = { s: "loading" } | { s: "none" } | { s: "error"; m: string } | { s: "ok"; r: Release };
@@ -32,19 +32,18 @@ type Props = {
   connected: boolean;
   /** restarts the card into its bootloader without a hand on it, whether the terminal has it or it is only
    *  plugged in and was allowed before; false when the page can't reach it */
-  bootloader(): Promise<boolean>;
+  bootloader(): Promise<string | null>;
   /** WebUSB works here */
   usb: boolean;
   /** Web Serial works here: a card the page can reach goes to its bootloader without a hand on it */
   serial: boolean;
   desk: Desk;
-  /** the card is writing its new firmware and will come back over USB */
-  onFlashed(): void;
+  onBusyChange(busy: boolean): void;
   /** opened from the update banner: the install button takes the keyboard */
   focusInstall?: boolean;
 };
 
-type Step = "fetch" | "boot" | "pick" | "write" | "done" | "fail" | "manual";
+type Step = "fetch" | "boot" | "pick" | "confirm" | "write" | "done" | "fail" | "manual";
 type Job = {
   label: string;
   /** from a release (else the visitor's own file), and whether the release had a sha256 to check it against */
@@ -62,23 +61,10 @@ type Job = {
   /** the card's way to its bootloader: "now" while the page restarts it, "yes" once it is there (its RP2350
    *  drive is up, no unplugging) */
   boot: "no" | "now" | "yes";
+  safeToCopy: boolean;
 };
 
-const UDEV = `echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", MODE="0666"' | sudo tee /etc/udev/rules.d/60-mk1.rules && sudo udevadm control --reload-rules`;
-
-async function bootDevice(): Promise<USBDevice | null> {
-  const all = await navigator.usb.getDevices();
-  return all.find((d) => d.vendorId === RP2350_BOOT.vendorId && d.productId === RP2350_BOOT.productId) ?? null;
-}
-
-async function waitBootDevice(ms: number): Promise<USBDevice | null> {
-  for (let t = 0; t < ms; t += 250) {
-    const d = await bootDevice();
-    if (d) return d;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return null;
-}
+const UDEV = `echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="2e8a", ATTR{idProduct}=="000f", TAG+="uaccess"' | sudo tee /etc/udev/rules.d/60-mk1.rules && sudo udevadm control --reload-rules`;
 
 type Mark = "now" | "done" | "fail" | "wait";
 const MARKS: Record<Mark, ReactNode> = {
@@ -155,13 +141,16 @@ function Failure({ job }: { job: Job }) {
 }
 
 /** firmware like Flipper's: the latest release in one click, or a .uf2 of your own */
-export function Flasher({ source, latest, onCard, connected, bootloader, usb, serial, desk, onFlashed, focusInstall }: Props) {
+export function Flasher({ source, latest, onCard, connected, bootloader, usb, serial, desk, onBusyChange, focusInstall }: Props) {
   const [job, setJob] = useState<Job | null>(null);
   const [over, setOver] = useState(false);
   const image = useRef<Image | null>(null);
+  const expected = useRef<string | null>(null);
+  const selected = useRef<USBDevice | null>(null);
+  const operation = useRef(false);
+  const [busy, setBusy] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const installButton = useRef<HTMLButtonElement>(null);
-  const busy = job !== null && (job.step === "fetch" || job.step === "boot" || job.step === "write");
 
   // the panel is still unfolding, clipped: scrolled to, the button would shift inside it
   useEffect(() => {
@@ -170,71 +159,81 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
 
   const patch = (p: Partial<Job>) => setJob((j) => (j ? { ...j, ...p } : j));
   const fail = (e: unknown) => patch({ step: "fail", error: e instanceof Error ? e.message : String(e) });
+  async function exclusive(action: () => Promise<void>) {
+    if (operation.current) return;
+    operation.current = true;
+    setBusy(true);
+    onBusyChange(true);
+    try { await action(); }
+    catch (error) { fail(error); }
+    finally {
+      operation.current = false;
+      setBusy(false);
+      onBusyChange(false);
+    }
+  }
 
   async function write(dev: USBDevice) {
+    const firmware = image.current;
+    if (!firmware) throw new Error("choose a firmware file first");
     patch({ step: "write", progress: 0, wrote: true });
     let pb: Picoboot | null = null;
     try {
-      pb = await Picoboot.open(dev);
-      await pb.flash(image.current!, (p) => patch({ progress: p }));
+      pb = await Picoboot.open(dev, expected.current);
+      await pb.flash(firmware, (p) => patch({ progress: p }));
       patch({ step: "done" });
-      onFlashed();
-    } catch (e) {
-      fail(e);
     } finally {
       await pb?.close();
     }
   }
 
-  async function install(label: string, get: () => Promise<Uint8Array>, rel: Release | null) {
+  const install = (label: string, get: () => Promise<Uint8Array>, rel: Release | null) => exclusive(async () => {
+    image.current = null;
+    expected.current = null;
+    selected.current = null;
     setJob({
       label, release: rel !== null, checked: !!rel?.sha256, file: null, bytes: 0, step: "fetch", progress: 0,
-      wrote: false, error: null, page: rel?.page ?? null, boot: "no",
+      wrote: false, error: null, page: rel?.page ?? null, boot: "no", safeToCopy: false,
     });
-    try {
-      const file = await get();
-      image.current = parseUf2(file);
-      patch({ file, bytes: image.current.bytes });
-    } catch (e) {
-      return fail(e);
-    }
-    const boot = async () => {
+    const file = await get();
+    const firmware = parseUf2(file);
+    image.current = firmware;
+    patch({ file, bytes: firmware.bytes, safeToCopy: firmware.safeToCopy });
+    if (!usb && !firmware.safeToCopy) throw new Error("this uf2 could erase progress on the boot drive. use webusb or a newer release");
+    if (serial) {
       patch({ step: "boot" });
-      // with the terminal closed, a page that knows no port is told so at once: no line flashes up for that
       const shown = setTimeout(() => patch({ boot: "now" }), connected ? 0 : 200);
-      const booted = await bootloader().catch(() => false);
-      clearTimeout(shown);
-      patch({ boot: booted ? "yes" : "no" });
-      return booted;
-    };
-    // no WebUSB (Firefox): the drive is the way, but a card on Web Serial still gets there by itself
-    if (!usb) {
-      await boot();
-      return patch({ step: "manual" });
+      try { expected.current = await bootloader(); }
+      finally { clearTimeout(shown); }
     }
-    const ready = await bootDevice();
-    if (ready) {
-      patch({ boot: "yes" });
-      return write(ready);
-    }
-    // the browser keeps the page's way to a bootloader it was given once (the RP2350's has a serial number,
-    // so that lasts); the first time it asks, and only a click opens its list
-    if (await boot()) {
-      const back = await waitBootDevice(4000);
-      if (back) return write(back);
-    }
-    patch({ step: "pick" });
-  }
+    patch({ step: usb ? "pick" : "manual", boot: expected.current ? "yes" : "no" });
+  });
 
-  async function pick() {
+  const pick = () => exclusive(async () => {
+    patch({ error: null });
+    let device: USBDevice;
     try {
-      write(await navigator.usb.requestDevice({ filters: [RP2350_BOOT] }));
+      device = await navigator.usb.requestDevice({ filters: [RP2350_BOOT] });
     } catch (e) {
-      if (!(e instanceof DOMException && e.name === "NotFoundError")) fail(e);
+      if (e instanceof DOMException && e.name === "NotFoundError") return;
+      throw e;
     }
-  }
+    const chip = expected.current;
+    if (chip && device.serialNumber?.toLowerCase() !== chip) {
+      return patch({ step: "pick", error: "this bootloader belongs to a different board. select the card you restarted" });
+    }
+    selected.current = device;
+    if (chip) await write(device);
+    else patch({ step: "confirm" });
+  });
 
-  const file = job?.file ?? null;
+  const confirm = () => exclusive(async () => {
+    const device = selected.current;
+    if (!device) throw new Error("pick the card's bootloader first");
+    await write(device);
+  });
+
+  const file = job?.safeToCopy ? job.file : null;
   const fileUrl = useMemo(
     () => (file ? URL.createObjectURL(new Blob([file.slice().buffer], { type: "application/octet-stream" })) : null),
     [file],
@@ -242,7 +241,10 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
   useEffect(() => () => { if (fileUrl) URL.revokeObjectURL(fileUrl); }, [fileUrl]);
 
   const fromFile = (f: File | undefined) => {
-    if (f) install(f.name, async () => new Uint8Array(await f.arrayBuffer()), null);
+    if (f) install(f.name, async () => {
+      if (f.size > MAX_UF2_BYTES) throw new Error("the firmware file is too large");
+      return new Uint8Array(await f.arrayBuffer());
+    }, null);
   };
 
   // while an install has the card in its bootloader it is off the serial port, not gone: it still runs what it said
@@ -273,7 +275,7 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
       const booting = job.step === "boot";
       lines.push(
         <Line key="boot" mark={booting ? "now" : "done"} id={booting ? "booting" : "booted"}>
-          {booting ? "restarting the card into its bootloader" : "the card is in its bootloader"}
+          {booting ? "restarting the card into its bootloader" : "bootloader restart requested for the connected card"}
         </Line>,
       );
     }
@@ -283,10 +285,11 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
           <div className="mk1-job-pick">
             <p>
               {job.boot === "yes"
-                ? "the browser asks this once: pick “RP2350 Boot” in its list."
-                : "unplug the card, hold its button and plug it back in, then pick “RP2350 Boot” in the browser's list."}
+                ? "pick the connected card's bootloader in the browser."
+                : "disconnect the other rp2350 boards. hold the card's button while plugging it in, then choose its bootloader."}
             </p>
-            <button type="button" className="mk1-btn primary" onClick={pick}>pick the bootloader</button>
+            {job.error && <p role="alert">{job.error}</p>}
+            <button type="button" className="mk1-btn primary" disabled={busy} onClick={pick}>pick the bootloader</button>
             {desk === "linux" && (
               <div className="mk1-job-note">
                 not in the list? let the browser reach it, then plug the card in again:<Copyable text={UDEV} />
@@ -295,6 +298,16 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
           </div>
         </Line>,
       );
+    if (job.step === "confirm") {
+      lines.push(
+        <Line key="confirm" mark="wait" id="confirm">
+          <div className="mk1-job-pick">
+            <p>confirm this is the only rp2350 board connected and you put it into bootsel.</p>
+            <button type="button" className="mk1-btn primary" disabled={busy} onClick={confirm}>write to selected device</button>
+          </div>
+        </Line>,
+      );
+    }
     if (job.wrote) {
       const mark = job.step === "done" ? "done" : failed ? "fail" : "now";
       lines.push(
@@ -305,12 +318,12 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
     }
     if (job.step === "done")
       lines.push(
-        <Line key="end" mark="done" id={onCard ? "back" : "restart"}>
-          {onCard ? <>the card is back, on <span className="mono">{onCard}</span></> : "the card restarts with its new firmware"}
+        <Line key="end" mark="done" id="restart">
+          firmware verified and restart requested. reconnect the card to check its version.
         </Line>,
       );
     if (failed && fetched) lines.push(<Line key="fail" mark="fail" id="fail"><Failure job={job} /></Line>);
-    if (job.step === "manual" || (failed && fetched))
+    if (job.safeToCopy && (job.step === "manual" || (failed && fetched)))
       lines.push(
         <Line key="manual" mark="wait" id="manual">
           <ol className="mk1-manual">
@@ -324,9 +337,6 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
             </li>
             <li>drop the .uf2 onto it. the card restarts with the new firmware by itself</li>
           </ol>
-          {job.boot !== "yes" && serial && !connected && (
-            <p className="mk1-job-note">or connect the card first and install again: the page restarts it into its bootloader, no unplugging.</p>
-          )}
           {/* the restart was asked for, not seen: a card that didn't take it still needs the hand */}
           {job.boot === "yes" && <p className="mk1-job-note">no drive? unplug the card, hold its button and plug it back in.</p>}
         </Line>,
@@ -405,7 +415,7 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
           your own firmware: drop a <span className="mono">.uf2</span> here or{" "}
           <button type="button" className="mk1-link" disabled={busy} onClick={() => picker.current?.click()}>choose a file</button>
         </p>
-        <input ref={picker} type="file" accept=".uf2" hidden onChange={(e) => { fromFile(e.target.files?.[0]); e.target.value = ""; }} />
+        <input ref={picker} type="file" accept=".uf2" hidden disabled={busy} onChange={(e) => { fromFile(e.target.files?.[0]); e.target.value = ""; }} />
       </div>
 
       <AnimatePresence initial={false}>

@@ -50,7 +50,14 @@ export async function createShell(wasm: BufferSource, hal: Hal): Promise<Shell> 
         bytes(p, n).set(saved);
         return 1;
       },
-      save: (p: number, n: number) => hal.save(bytes(p, n).slice()),
+      save: (p: number, n: number) => {
+        try {
+          hal.save(bytes(p, n).slice());
+          return 0;
+        } catch {
+          return -1;
+        }
+      },
       exit: () => hal.exit(),
     },
   });

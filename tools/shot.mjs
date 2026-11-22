@@ -4,8 +4,9 @@
 // `levels` a card on usb showing a frame of its cube; `firefox` Firefox 151 and newer, Web Serial without WebUSB;
 // `silent` a port that never says hello; `busy` a second card while another tab holds the first; `update` a card
 // on old firmware with a newer release out: the banner and the install over a stand-in bootloader, also narrow,
-// with reduced motion, with the terminal closed, a first install, a file that isn't firmware and a stalled write)
+// with reduced motion, with the terminal closed, manual confirmation, a wrong device, a bad file and a stalled write)
 import { createHash } from "node:crypto";
+import assert from "node:assert/strict";
 import { chromium, devices } from "playwright-core";
 
 const out = process.argv[2] ?? "shots";
@@ -36,24 +37,27 @@ const card = (p) => p.locator(".mk1-cardstage[data-settled]").waitFor({ timeout:
 // the levels in between that the shell never sends. hello: whether it answers at all; known: the site was
 // allowed it before (else the picker, which takes `pick` ms); usb: WebUSB stays; busy: another tab holds the
 // known port, and the picker offers a second card; firmware: the version its hello gives (window.__firmware,
-// which an install changes). every open's baud rate goes to window.__opens; window.__back() is the browser's
-// connect event, the card back on usb
+// which an install changes). every open's baud rate goes to window.__opens.
 const CUBE = "00000002410000000000003c79000000000005c66a60000000007b6226b4000000009420034a100000003c6136890000000005b55a8000000000007ab60000000000000440000000";
-const fakePort = ({ hello = true, known = true, pick = 0, usb = true, busy = false, firmware = "0.0.0" } = {}) => `{
+const CHIP = "0123456789abcdef";
+const fakePort = ({
+  hello = true, known = true, pick = 0, usb = true, busy = false, firmware = "0.0.0", chip = CHIP, bootDelay = 0,
+} = {}) => `{
   window.__opens = [];
   window.__firmware = "${firmware}";
-  const comes = [];
   const make = (held) => ({
     getInfo: () => ({ usbVendorId: 0x2e8a }),
     async open(o) {
       if (held) throw new DOMException("Failed to open serial port.", "NetworkError");
       window.__opens.push(o.baudRate);
+      if (o.baudRate === 1200 && ${bootDelay}) await new Promise((done) => setTimeout(done, ${bootDelay}));
       let card;
       this.readable = new ReadableStream({ start: (c) => { card = c; } });
       this.writable = new WritableStream({
         write: (b) => {
           if (${hello} && new TextDecoder().decode(b).includes("7777;hello"))
-            card.enqueue(new TextEncoder().encode("\\x1b]7777;mk1;2;" + window.__firmware + "\\x07\\x1b]7777;f;${CUBE}\\x07"));
+            card.enqueue(new TextEncoder().encode("\\x1b]7777;mk1;2;" + window.__firmware + "\\x07" +
+              (${JSON.stringify(chip)} ? "\\x1b]7777;chip;${chip ?? ""}\\x07" : "") + "\\x1b]7777;f;${CUBE}\\x07"));
         },
       });
     },
@@ -61,31 +65,33 @@ const fakePort = ({ hello = true, known = true, pick = 0, usb = true, busy = fal
   });
   const port = make(${busy});
   const other = ${busy} ? make(false) : port;
-  window.__back = () => comes.forEach((f) => f({ target: other }));
   Object.defineProperty(navigator, "serial", {
     value: {
       getPorts: async () => (${known} ? [port] : []),
       requestPort: () => new Promise((done) => setTimeout(() => done(other), ${pick})),
-      addEventListener: (type, f) => type === "connect" && comes.push(f),
-      removeEventListener: (type, f) => comes.includes(f) && comes.splice(comes.indexOf(f), 1),
+      addEventListener() {},
+      removeEventListener() {},
     },
   });
   ${usb ? "" : "delete Object.getPrototypeOf(navigator).usb;"}
 }`;
 
-// a stand-in RP2350 bootloader on WebUSB: it is there once a card was opened at 1200 baud, answers each PICOBOOT
-// transfer after `ms` (a sector is five of them), and after the reboot command the card comes back on usb
-// serial with firmware `next`. granted: the browser was given it before (else it stays out of getDevices()
-// until picked in the list, as on a first install); failAt: the transfer it stalls on
-const fakeBoot = ({ ms = 20, next = "0.2.0", granted = true, failAt = 0 } = {}) => `{
+// The stand-in bootloader keeps sector contents for the installer's read-back verification.
+const fakeBoot = ({ ms = 20, next = "0.2.0", granted = true, failAt = 0, wrongFirst = false, manual = false } = {}) => `{
   const wait = () => new Promise((done) => setTimeout(done, ${ms}));
   const ok = { status: "ok" };
   let picked = ${granted}, sent = 0;
+  let command;
+  const sectors = new Map();
+  window.__bootPicks = 0;
+  window.__sectorsWritten = 0;
   const bulk = (endpointNumber, direction) => ({ endpointNumber, direction, type: "bulk" });
+  const alternate = { interfaceClass: 0xff, endpoints: [bulk(3, "in"), bulk(4, "out")] };
   const dev = {
     vendorId: 0x2e8a,
     productId: 0x000f,
-    configuration: { interfaces: [{ interfaceNumber: 1, alternates: [{ interfaceClass: 0xff, endpoints: [bulk(3, "in"), bulk(4, "out")] }] }] },
+    serialNumber: "${CHIP.toUpperCase()}",
+    configuration: { interfaces: [{ interfaceNumber: 1, alternate }] },
     open: async () => {},
     selectConfiguration: async () => {},
     claimInterface: async () => {},
@@ -96,19 +102,38 @@ const fakeBoot = ({ ms = 20, next = "0.2.0", granted = true, failAt = 0 } = {}) 
     async transferOut(ep, data) {
       await wait();
       if (++sent === ${failAt}) return { status: "stall", bytesWritten: 0 };
-      const reboot = data.length === 32 && new DataView(data.buffer, data.byteOffset).getUint32(0, true) === 0x431fd10b && data[8] === 0x0a;
-      if (reboot) setTimeout(() => { window.__firmware = "${next}"; window.__back(); }, 500);
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      if (data.length === 32 && view.getUint32(0, true) === 0x431fd10b) {
+        command = { id: data[8], address: view.getUint32(16, true) };
+        if (command.id === 0x03) sectors.delete(command.address);
+      } else if (command?.id === 0x05 && data.length) {
+        sectors.set(command.address, data.slice());
+        window.__sectorsWritten += 1;
+      } else if (command?.id === 0x84 && !data.length) {
+        command = undefined;
+      }
       return { ...ok, bytesWritten: data.length };
     },
     async transferIn() {
       await wait();
+      if (command?.id === 0x84) {
+        const bytes = sectors.get(command.address);
+        return { ...ok, data: new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength) };
+      }
+      if (command?.id === 0x0a) window.__firmware = "${next}";
+      command = undefined;
       return { ...ok, data: new DataView(new ArrayBuffer(0)) };
     },
   };
   Object.defineProperty(navigator, "usb", {
     value: {
-      getDevices: async () => (picked && window.__opens.includes(1200) ? [dev] : []),
-      requestDevice: async () => { picked = true; return dev; },
+      getDevices: async () => (picked && (${manual} || window.__opens.includes(1200)) ? [dev] : []),
+      async requestDevice() {
+        if (!${manual} && !window.__opens.includes(1200)) throw new DOMException("No bootloader", "NotFoundError");
+        picked = true;
+        if (++window.__bootPicks === 1 && ${wrongFirst}) return { ...dev, serialNumber: "fedcba9876543210" };
+        return dev;
+      },
     },
   });
 }`;
@@ -187,7 +212,9 @@ async function firefox(theme) {
   await p.getByRole("button", { name: "firmware" }).click();
   await settle(p, 600);
   await p.locator(".mk1-drop input[type=file]").setInputFiles({ name: "mk1-test.uf2", mimeType: "application/octet-stream", buffer: UF2 });
-  await settle(p, 900);
+  await p.getByRole("link", { name: "save the .uf2" }).waitFor();
+  assert.equal(await p.evaluate(() => window.__opens.includes(1200)), true);
+  await settle(p, 400);
   await p.locator(".mk1-flash").screenshot({ path: `${out}/${theme}-firefox-flash.png` });
   console.log(`${theme} firefox: the port opened at`, await p.evaluate(() => window.__opens.join(", ")), "baud");
   await p.context().close();
@@ -241,11 +268,17 @@ async function update(theme, opts = {}, variant = "") {
   await settle(p, 700);
   await p.locator(".mk1-flash").screenshot({ path: shot("-panel") });
   await p.getByRole("button", { name: "install", exact: true }).click();
+  const bootloader = p.getByRole("button", { name: "pick the bootloader" });
+  await bootloader.waitFor();
+  assert.equal(await p.evaluate(() => window.__sectorsWritten), 0);
+  await bootloader.click();
   for (const at of [30, 70]) {
     await p.waitForFunction((n) => Number(document.querySelector(".mk1-progress")?.getAttribute("aria-valuenow")) >= n, at);
     await p.locator(".mk1-flash").screenshot({ path: shot(`-write${at}`) });
   }
-  await p.getByText("the card is back").waitFor({ timeout: 10000 });
+  await p.getByText(/firmware verified and restart requested/).waitFor({ timeout: 15000 });
+  await p.getByRole("button", { name: "connect the card" }).click();
+  await p.getByText("firmware 0.2.0", { exact: true }).waitFor();
   await settle(p, 700);
   await p.locator(".mk1-flash").screenshot({ path: shot("-done") });
   console.log(`${theme} update${variant}: the port opened at`, await p.evaluate(() => window.__opens.join(", ")), "baud");
@@ -263,19 +296,18 @@ async function updateClosed(theme) {
   await p.getByRole("button", { name: "firmware" }).click();
   await settle(p, 700);
   await p.locator(".mk1-drop input[type=file]").setInputFiles({ name: "mk1-test.uf2", mimeType: "application/octet-stream", buffer: uf2(8) });
-  await p.getByText("the card is back").waitFor({ timeout: 10000 });
+  await p.getByRole("button", { name: "pick the bootloader" }).click();
+  await p.getByText(/firmware verified and restart requested/).waitFor({ timeout: 10000 });
   await settle(p, 700);
   await p.locator(".mk1-flash").screenshot({ path: `${out}/${theme}-update-closed.png` });
   console.log(`${theme} update, terminal closed: the port opened at`, await p.evaluate(() => window.__opens.join(", ")), "baud");
   await p.context().close();
 }
 
-// the install's other ends: a first install, where the browser asks for the bootloader once (the wait for it
-// as the card restarts, then the pick); a file that isn't firmware; a write the bootloader stalls partway
 async function updateEdges(theme) {
   const shot = (what) => `${out}/${theme}-update-${what}.png`;
-  const open = async (boot) => {
-    const p = await page({}, { content: fakePort({ firmware: "0.1.0" }) + fakeBoot(boot) });
+  const open = async (boot, serial) => {
+    const p = await page({}, { content: fakePort({ firmware: "0.1.0", ...serial }) + fakeBoot(boot) });
     await serveRelease(p);
     await p.goto(url(`?theme=${theme}`));
     await p.evaluate(() => document.fonts.ready);
@@ -287,26 +319,41 @@ async function updateEdges(theme) {
     return p;
   };
 
-  const first = await open({ granted: false });
+  const first = await open({ granted: false, wrongFirst: true }, { bootDelay: 1700 });
   await first.getByRole("button", { name: "install", exact: true }).click();
-  // the page waits 4 s for a bootloader it may not see yet: the restart's line spins all that while
   await first.locator('.mk1-line[data-mark="now"]', { hasText: "restarting" }).waitFor();
-  await settle(first, 1500);
-  console.log(`${theme} first install, 1.5 s into the wait:`, await first.evaluate(() =>
-    [...document.querySelectorAll(".mk1-line")].map((l) => `${l.dataset.mark}: ${l.textContent}`).join(" / ")));
+  await settle(first, 500);
   await first.locator(".mk1-flash").screenshot({ path: shot("first-wait") });
-  await first.getByRole("button", { name: "pick the bootloader" }).waitFor({ timeout: 10000 });
+  const firstPick = first.getByRole("button", { name: "pick the bootloader" });
+  await firstPick.waitFor();
   await settle(first, 500);
   await first.locator(".mk1-flash").screenshot({ path: shot("first-pick") });
-  await first.getByRole("button", { name: "pick the bootloader" }).click();
-  await first.getByText("the card is back").waitFor({ timeout: 10000 });
+  await firstPick.click();
+  await first.getByText(/bootloader belongs to a different board/).waitFor();
+  assert.equal(await first.evaluate(() => window.__sectorsWritten), 0);
+  await settle(first, 500);
+  await first.locator(".mk1-flash").screenshot({ path: shot("wrong-device") });
+  await firstPick.click();
+  await first.getByText(/firmware verified and restart requested/).waitFor({ timeout: 15000 });
   await first.context().close();
+
+  const manual = await open({ manual: true }, { chip: null });
+  await manual.locator(".mk1-drop input[type=file]").setInputFiles({ name: "mk1-test.uf2", mimeType: "application/octet-stream", buffer: UF2 });
+  await manual.getByRole("button", { name: "pick the bootloader" }).click();
+  const confirm = manual.getByRole("button", { name: "write to selected device" });
+  await confirm.waitFor();
+  assert.deepEqual(await manual.evaluate(() => [window.__opens.includes(1200), window.__sectorsWritten]), [false, 0]);
+  await manual.locator(".mk1-flash").screenshot({ path: shot("manual-confirm") });
+  await confirm.click();
+  await manual.getByText(/firmware verified and restart requested/).waitFor({ timeout: 10000 });
+  await manual.context().close();
 
   const stall = await open({ failAt: 60 });
   await stall.locator(".mk1-drop input[type=file]").setInputFiles({ name: "notes.uf2", mimeType: "application/octet-stream", buffer: Buffer.alloc(512) });
   await settle(stall, 800);
   await stall.locator(".mk1-flash").screenshot({ path: shot("badfile") });
   await stall.getByRole("button", { name: "install", exact: true }).click();
+  await stall.getByRole("button", { name: "pick the bootloader" }).click();
   await stall.locator('.mk1-progress[data-mark="fail"]').waitFor({ timeout: 10000 });
   await settle(stall, 700);
   await stall.locator(".mk1-flash").screenshot({ path: shot("failed") });

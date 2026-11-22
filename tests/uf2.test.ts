@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FAMILY, parseUf2, Uf2Error } from "../src/mk1/flash/uf2.ts";
+import { FAMILY, parseUf2, SAVES_BASE, Uf2Error } from "../src/mk1/flash/uf2.ts";
 
 function block(addr: number, family: number, fill: number, flags = 0x2000): Uint8Array {
   const b = new Uint8Array(512);
@@ -33,10 +33,25 @@ test("pages land in 4 KB sectors, gaps stay erased", () => {
 });
 
 test("picotool's E10 block is skipped, RP2040 images are refused", () => {
-  const img = parseUf2(cat(block(0x10ffff00, FAMILY.absolute, 0), block(0x10000000, FAMILY.rp2350ArmS, 7)));
+  const page = block(0x10000000, FAMILY.rp2350ArmS, 7);
+  const marker = block(0x10ffff00, FAMILY.absolute, 0, 0xa000);
+  const fields = new DataView(marker.buffer);
+  fields.setUint32(288, 0x9957e304, true);
+  const img = parseUf2(cat(marker, page));
   assert.equal(img.sectors.length, 1);
   assert.equal(img.family, FAMILY.rp2350ArmS);
+  assert.equal(img.safeToCopy, false);
+  fields.setUint32(12, SAVES_BASE - 256, true);
+  const relocated = parseUf2(cat(marker, page));
+  assert.equal(relocated.safeToCopy, true);
+  assert.equal(relocated.sectors.length, 1);
   assert.throws(() => parseUf2(block(0x10000000, FAMILY.rp2040, 0)), /RP2040/);
   assert.throws(() => parseUf2(new Uint8Array(100)), Uf2Error);
   assert.throws(() => parseUf2(block(0x20000000, FAMILY.rp2350ArmS, 0)), /outside the flash/);
+});
+
+test("every flash page is checked for saved progress boundaries before building the image", () => {
+  assert.equal(parseUf2(block(SAVES_BASE - 256, FAMILY.rp2350ArmS, 7)).sectors.length, 1);
+  assert.throws(() => parseUf2(block(SAVES_BASE, FAMILY.rp2350ArmS, 7)), /saved progress/);
+  assert.throws(() => parseUf2(block(0x10ffff00, FAMILY.absolute, 0)), /saved progress/);
 });

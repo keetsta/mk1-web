@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useId, useState, type FormEvent } from "react";
 import { EASE, Smooth, Swap } from "../anim";
 import { LuArrowUp, LuCheck, LuCircleAlert, LuLoaderCircle } from "../icons";
-import { boardNumber, boardUnavailable, publishBoardResult, type BoardEntry } from "./api";
+import { boardNumber, boardUnavailable, changeNickname, publishBoardResult, type BoardEntry } from "./api";
 import "../top.css";
 
 const STATUS = {
@@ -37,9 +37,10 @@ function ResultStats({ entry }: { entry: BoardEntry }) {
   );
 }
 
-export function PublishResult({ token, onPublished, embedded = false }: {
+export function PublishResult({ token, onPublished, signNickname, embedded = false }: {
   token: string;
   onPublished?: (entry: BoardEntry) => void;
+  signNickname?: (nonce: string, name: string) => Promise<string>;
   embedded?: boolean;
 }) {
   const errorId = useId();
@@ -47,6 +48,7 @@ export function PublishResult({ token, onPublished, embedded = false }: {
   const [posting, setPosting] = useState(false);
   const [entry, setEntry] = useState<BoardEntry | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const name = nickname.trim().normalize("NFC");
   const nameError = [...name].length > 24 ? "keep your nickname to 24 characters." : "";
   const phase = entry ? "published" : posting ? "sending" : error ? "failed" : "ready";
@@ -58,7 +60,17 @@ export function PublishResult({ token, onPublished, embedded = false }: {
     setPosting(true);
     setError("");
     try {
-      const published = await publishBoardResult(token, name || undefined);
+      let published = await publishBoardResult(token, name || undefined);
+      if (name && published.nickname !== name) {
+        if (!signNickname) setNotice("connect the card to change its saved nickname");
+        else {
+          try { published = await changeNickname(token, name, signNickname); }
+          catch (error) {
+            const detail = error instanceof Error ? error.message : boardUnavailable;
+            setNotice(`nickname unchanged: ${detail}`);
+          }
+        }
+      }
       setEntry(published);
       onPublished?.(published);
     } catch (error) {
@@ -118,6 +130,7 @@ export function PublishResult({ token, onPublished, embedded = false }: {
               transition={settle}
             >
               <ResultStats entry={entry} />
+              {notice && <p className="mk1-publish-note" role="status">{notice}</p>}
             </motion.div>
           ) : (
             <motion.form

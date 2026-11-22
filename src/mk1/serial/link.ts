@@ -1,10 +1,11 @@
 /* The card over Web Serial: the terminal's bytes both ways, with the page's frames taken out of them. */
 
-import { BYE, HELLO, OscSplitter, type CardMessage } from "./osc";
+import { BYE, HELLO, nicknameRequest, OscSplitter, type CardMessage } from "./osc.ts";
 
 /** the card's firmware enumerates under Raspberry Pi's vendor id with pico-sdk's own product id, as every
  *  pico-sdk board does: the filter lets any of them through, and only the card's hello tells them apart */
 const CARD_FILTER: SerialPortFilter = { usbVendorId: 0x2e8a };
+export const HELLO_MS = 1500;
 
 export type Trouble =
   | "unsupported" // no Web Serial: Safari, Firefox before 151, phones
@@ -48,8 +49,10 @@ export async function askCard(): Promise<SerialPort | null> {
 export type CardLink = {
   write(bytes: Uint8Array): void;
   close(): Promise<void>;
+  identify(): Promise<string | null>;
+  signNickname(nonce: string, nickname: string): Promise<string>;
   /** restarts the card into its bootloader: the 1200-baud touch its firmware listens for */
-  bootloader(): Promise<void>;
+  bootloader(): Promise<string | null>;
 };
 
 export type CardEvents = {
@@ -65,10 +68,32 @@ export async function openCard(port: SerialPort, on: CardEvents): Promise<CardLi
   } catch (e) {
     throw new LinkError("busy", e instanceof Error ? e.message : String(e));
   }
-  const splitter = new OscSplitter(on.message);
   const reader = port.readable!.getReader();
   const writer = port.writable!.getWriter();
   let closing = false;
+  let protocol = 0;
+  let chip: string | null = null;
+  let finishIdentity!: (id: string | null) => void;
+  const identified = new Promise<string | null>((resolve) => { finishIdentity = resolve; });
+  const identityTimeout = setTimeout(() => finishIdentity(null), HELLO_MS);
+  let pending: { nonce: string; finish: (proof?: string) => void } | null = null;
+  const finish = () => {
+    clearTimeout(identityTimeout);
+    finishIdentity(null);
+    pending?.finish();
+  };
+  const splitter = new OscSplitter((message) => {
+    if (closing) return;
+    if (message.kind === "hello") protocol = message.version;
+    else if (message.kind === "chip" && protocol === 2 && chip === null) {
+      chip = message.id;
+      clearTimeout(identityTimeout);
+      finishIdentity(chip);
+    } else if (message.kind === "nick" && pending?.nonce === message.nonce) {
+      pending.finish(message.proof);
+    }
+    on.message(message);
+  });
   const reading = (async () => {
     try {
       for (;;) {
@@ -84,6 +109,7 @@ export async function openCard(port: SerialPort, on: CardEvents): Promise<CardLi
     }
     if (!closing) {
       closing = true;
+      finish();
       writer.releaseLock();
       await port.close().catch(() => {});
       on.closed(true);
@@ -95,6 +121,7 @@ export async function openCard(port: SerialPort, on: CardEvents): Promise<CardLi
   };
   const shut = async () => {
     closing = true;
+    finish();
     await queue;
     await reader.cancel().catch(() => {});
     await reading;
@@ -104,6 +131,25 @@ export async function openCard(port: SerialPort, on: CardEvents): Promise<CardLi
   write(HELLO);
   return {
     write,
+    identify: () => closing ? Promise.resolve(null) : identified,
+    async signNickname(nonce, nickname) {
+      if (!await identified || closing) throw new Error("connect the card running firmware 0.1.2 or later");
+      if (pending) throw new Error("the card is already confirming a nickname");
+      const request = nicknameRequest(nonce, nickname);
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => pending?.finish(), 5000);
+        pending = {
+          nonce,
+          finish(proof) {
+            clearTimeout(timeout);
+            pending = null;
+            if (proof) resolve(proof);
+            else reject(new Error("the card did not confirm the nickname"));
+          },
+        };
+        write(request);
+      });
+    },
     async close() {
       if (closing) return;
       write(BYE);
@@ -111,10 +157,16 @@ export async function openCard(port: SerialPort, on: CardEvents): Promise<CardLi
       on.closed(false);
     },
     async bootloader() {
-      if (!closing) await shut();
-      await port.open({ baudRate: 1200 });
-      await port.close();
-      on.closed(false);
+      const target = await identified;
+      if (!target || closing) return null;
+      await shut();
+      try {
+        await port.open({ baudRate: 1200 });
+        await port.close();
+        return target;
+      } finally {
+        on.closed(false);
+      }
     },
   };
 }

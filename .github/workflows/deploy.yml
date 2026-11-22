@@ -24,7 +24,7 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -35,7 +35,7 @@ jobs:
           [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
           printf 'sha=%s\n' "$revision" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: keetsta/mk1-shell
           ref: ${{ steps.shell-revision.outputs.sha }}
@@ -44,7 +44,7 @@ jobs:
           ssh-strict: true
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: npm
@@ -53,7 +53,10 @@ jobs:
         run: |
           venv="$RUNNER_TEMP/mk1-zig"
           python3 -m venv "$venv"
-          "$venv/bin/python" -m pip install --disable-pip-version-check ziglang==0.16.0
+          "$venv/bin/python" -m pip --isolated install --disable-pip-version-check \
+            --index-url https://pypi.org/simple --only-binary=:all: --no-deps --require-hashes -r /dev/stdin <<'REQUIREMENTS'
+          ziglang==0.16.0 --hash=sha256:9fcda73f62b851dd72a54b710ad40a209896db14cfb13649e62191243556342b
+          REQUIREMENTS
           zig_dir=$("$venv/bin/python" -c 'from pathlib import Path; import ziglang; print(Path(ziglang.__file__).parent)')
           test "$("$zig_dir/zig" version)" = '0.16.0'
           printf '%s\n' "$zig_dir" >> "$GITHUB_PATH"
@@ -84,6 +87,7 @@ jobs:
           web="$scratch/web"
           install -m 644 -D dist/index.html "$web/mk1/index.html"
           install -m 644 -D dist/mk1/top/index.html "$web/mk1/top/index.html"
+          install -m 644 LICENSE "$web/mk1/LICENSE"
           cp -a dist/assets "$web/mk1/assets"
 
           tar -C "$web" -czf - mk1 | ssh -F /dev/null -T -i "$scratch/key" \

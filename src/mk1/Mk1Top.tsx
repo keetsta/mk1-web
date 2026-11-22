@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, MotionConfig, useReducedMotion } from "motion/react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { EASE, Unfold } from "./anim";
 import { boardNumber, loadBoard, type BoardEntry } from "./board/api";
 import { PublishResult } from "./board/PublishResult";
@@ -10,6 +10,12 @@ import "./top.css";
 
 function fragment() {
   return window.location.hash.slice(1);
+}
+
+function clearResultFragment(hash: string) {
+  if (isBoardToken(resultToken(hash))) {
+    window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+  }
 }
 
 function resultToken(link: string) {
@@ -23,11 +29,14 @@ function resultToken(link: string) {
 
 export function Mk1Top() {
   const [hash, setHash] = useState(() => typeof window === "undefined" ? "" : fragment());
+  const activeLink = useRef(hash);
   const [importOpen, setImportOpen] = useState(() => !!hash && !isBoardToken(resultToken(hash)));
   const [pastedLink, setPastedLink] = useState("");
   const [entries, setEntries] = useState<BoardEntry[] | null>(null);
   const [boardError, setBoardError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [nextOffset, setNextOffset] = useState<number>();
   const [published, setPublished] = useState<BoardEntry | null>(null);
   const importId = useId();
   const still = useReducedMotion();
@@ -36,8 +45,11 @@ export function Mk1Top() {
   const hasLinkedToken = isBoardToken(linkedToken);
 
   useEffect(() => {
+    clearResultFragment(fragment());
     const onHashChange = () => {
       const next = fragment();
+      clearResultFragment(next);
+      activeLink.current = next;
       setHash(next);
       setImportOpen(!!next && !isBoardToken(resultToken(next)));
       setPastedLink("");
@@ -50,27 +62,31 @@ export function Mk1Top() {
   useEffect(() => {
     const controller = new AbortController();
     setBoardError("");
-    loadBoard(controller.signal)
-      .then((rows) => {
-        if (!controller.signal.aborted) setEntries(rows);
+    loadBoard(controller.signal, offset)
+      .then((page) => {
+        if (!controller.signal.aborted) {
+          setEntries(page.entries);
+          setNextOffset(page.nextOffset);
+        }
       })
       .catch((error: Error) => {
         if (!controller.signal.aborted) setBoardError(error.message);
       });
     return () => controller.abort();
-  }, [refresh]);
+  }, [offset, refresh]);
 
   const refreshBoard = () => setRefresh((count) => count + 1);
+  const changePage = (pageOffset: number) => {
+    setEntries(null);
+    setNextOffset(undefined);
+    setOffset(pageOffset);
+  };
   const publishPastedResult = (entry: BoardEntry) => {
     setPublished(entry);
     refreshBoard();
   };
   const publishLinkedResult = (entry: BoardEntry) => {
-    if (fragment() === hash) {
-      window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
-      // Keep the form mounted to show the receipt after clearing the link.
-      setPublished(entry);
-    }
+    if (activeLink.current === hash) setPublished(entry);
     refreshBoard();
   };
 
@@ -112,7 +128,7 @@ export function Mk1Top() {
               <tbody>
                 {entries.map((entry, index) => (
                   <tr key={entry.card} className={entry.card === published?.card ? "mk1-top-fresh" : undefined}>
-                    <td className="mono">{index + 1}</td>
+                    <td className="mono">{offset + index + 1}</td>
                     <th scope="row" className="mk1-top-card">
                       <bdi>{entry.nickname || entry.card}</bdi>
                       <span className="mk1-top-card-cost">
@@ -127,6 +143,14 @@ export function Mk1Top() {
                 ))}
               </tbody>
             </table>
+          )}
+          {(offset > 0 || nextOffset !== undefined) && (
+            <nav className="mk1-top-pages" aria-label="leaderboard pages">
+              <button className="mk1-btn" type="button" disabled={offset === 0 || entries === null}
+                onClick={() => changePage(Math.max(0, offset - 100))}>previous</button>
+              <button className="mk1-btn" type="button" disabled={nextOffset === undefined}
+                onClick={() => { if (nextOffset !== undefined) changePage(nextOffset); }}>next</button>
+            </nav>
           )}
           {(!hasLinkedToken || published) && (
             <div className="mk1-top-import">

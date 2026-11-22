@@ -11,7 +11,7 @@ import { LuCpu, LuLoaderCircle, LuPlay, LuSun, LuTrophy, LuUnplug, LuUsb, SiGith
 import { CardStage } from "./preview/CardStage";
 import { dark, fromLevels, type Screen } from "./screen";
 import { BoardReader } from "./serial/board";
-import { LinkError, askCard, knownCard, openCard, serialTrouble, type CardLink, type Trouble } from "./serial/link";
+import { HELLO_MS, LinkError, askCard, knownCard, openCard, serialTrouble, type CardLink, type Trouble } from "./serial/link";
 import type { Shell } from "./shell/core";
 import { loadShell } from "./shell/load";
 import { Term, type TermHandle } from "./term/Term";
@@ -32,9 +32,7 @@ const loadState = (n: number) => {
   }
 };
 const saveState = (s: Uint8Array) => {
-  try {
-    localStorage.setItem(STATE, btoa(String.fromCharCode(...s)));
-  } catch { /* storage blocked: the progress lasts the visit */ }
+  localStorage.setItem(STATE, btoa(String.fromCharCode(...s)));
 };
 
 const DEFAULT_FIRMWARE: FirmwareSource = { manifest: "/mk1/firmware/latest.json", github: "keetsta/mk1-shell" };
@@ -44,8 +42,6 @@ const DEFAULT_FIRMWARE: FirmwareSource = { manifest: "/mk1/firmware/latest.json"
 export type Source = { repo: string; commit?: string; label?: string };
 const BUILD = typeof __MK1_BUILD__ === "object" && __MK1_BUILD__ ? __MK1_BUILD__ : null;
 const DEFAULT_SOURCE: Source = { repo: "keetsta/mk1-web", ...BUILD };
-/** a card answers the page's hello within a tick (20 ms); a port still quiet after this is not one */
-const HELLO_MS = 1500;
 
 /** the page's entrance: each block rises into place a little after the one before */
 const rise = (i: number) => ({
@@ -128,6 +124,13 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   const [silent, setSilent] = useState(false);
   const quiet = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [flashOpen, setFlashOpen] = useState(false);
+  const [flashBusy, setFlashBusy] = useState(false);
+  useEffect(() => {
+    if (!flashBusy) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [flashBusy]);
   // the panel was opened from the update banner: its install button takes the keyboard
   const [flashFromBanner, setFlashFromBanner] = useState(false);
   const latest = useLatest(firmware);
@@ -147,7 +150,6 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   modeRef.current = mode;
   const inputs = useRef({ pressed, lux });
   inputs.current = { pressed, lux };
-  const reconnect = useRef(false);
   // try it's shell didn't load: the terminal stays open with the reason in it
   const [failed, setFailed] = useState(false);
 
@@ -189,7 +191,6 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
 
   const closeCard = async () => {
     const l = link.current;
-    link.current = null;
     setBoardToken("");
     if (l) await l.close();
   };
@@ -237,25 +238,27 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
       let hello = false;
       const board = new BoardReader(setBoardToken);
       setScreen(dark());
-      const l = await openCard(port, {
+      let l: CardLink | undefined;
+      l = await openCard(port, {
         text: (b) => {
-          term.current?.write(b);
-          board.feed(b);
+          const text = board.feed(b);
+          if (text.length) term.current?.write(text);
         },
         message: (m) => {
           if (m.kind === "hello") {
             hello = true;
             setSilent(false);
             setCard({ live: true, firmware: m.firmware });
-          } else setScreen(m.screen);
+          } else if (m.kind === "frame") setScreen(m.screen);
         },
         closed: (lost) => {
-          if (link.current === l) link.current = null;
+          if (link.current !== l) return;
+          link.current = null;
           setBoardToken("");
           setSilent(false);
           setCard({ live: false, firmware: null });
           setMode((m) => (m === "card" ? "idle" : m));
-          if (lost && !reconnect.current) setTrouble("lost");
+          if (lost) setTrouble("lost");
         },
       });
       link.current = l;
@@ -293,53 +296,20 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
     if (port) await open(port);
   };
 
-  /** the card into its bootloader for an install, no hand on it: through the terminal's link, or, with the
-   *  terminal closed, through the port the site was allowed before, once the card on it has said hello. The
-   *  port filter lets any pico-sdk board through, and a 1200-baud touch would send another board to its
-   *  bootloader to take this firmware */
-  const toBootloader = async (): Promise<boolean> => {
-    if (link.current) {
-      reconnect.current = true;
-      await link.current.bootloader();
-      return true;
-    }
-    if (serialTrouble()) return false;
+  const toBootloader = async (): Promise<string | null> => {
+    if (link.current) return link.current.bootloader();
+    if (serialTrouble()) return null;
     const port = await knownCard().catch(() => null);
-    if (!port) return false;
-    let hello = false;
-    let probe: CardLink;
-    try {
-      probe = await openCard(port, {
-        text: () => {},
-        message: (m) => { if (m.kind === "hello") hello = true; },
-        closed: () => {},
-      });
-    } catch {
-      return false; // another tab holds it
-    }
-    for (let t = 0; t < HELLO_MS && !hello; t += 50) await new Promise((r) => setTimeout(r, 50));
-    if (!hello) {
-      await probe.close();
-      return false;
-    }
-    reconnect.current = true;
-    await probe.bootloader();
-    return true;
+    if (!port) return null;
+    const probe = await openCard(port, {
+      text: () => {},
+      message: () => {},
+      closed: () => {},
+    }).catch(() => null);
+    if (!probe) return null;
+    try { return await probe.bootloader(); }
+    finally { await probe.close(); }
   };
-
-  // after a firmware install the card comes back on its own: reopen the port that came back (with two
-  // allowed, the site's own list can't tell which one it is, and the picker needs a click)
-  useEffect(() => {
-    if (!("serial" in navigator)) return;
-    const back = (e: Event) => {
-      if (!reconnect.current) return;
-      reconnect.current = false;
-      const port = e.target as SerialPort;
-      setTimeout(() => open(port), 400);
-    };
-    navigator.serial.addEventListener("connect", back);
-    return () => navigator.serial.removeEventListener("connect", back);
-  }, [open]);
 
   useEffect(() => () => {
     clearTimeout(quiet.current);
@@ -388,13 +358,13 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
   const tryFirst = away !== null;
   const connectButton =
     mode === "card" ? (
-      <button type="button" className="mk1-btn" onClick={closeCard}><LuUnplug size={17} /> disconnect</button>
+      <button type="button" className="mk1-btn" onClick={closeCard} disabled={flashBusy}><LuUnplug size={17} /> disconnect</button>
     ) : (
       <button
         type="button"
         className={tryFirst ? "mk1-btn" : "mk1-btn primary"}
         onClick={() => connectCard()}
-        disabled={connecting || picking}
+        disabled={connecting || picking || flashBusy}
       >
         {connecting ? <LuLoaderCircle className="mk1-spin" size={17} /> : <LuUsb size={17} />} connect the card
       </button>
@@ -404,6 +374,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
       type="button"
       className={tryFirst && mode !== "try" ? "mk1-btn primary" : "mk1-btn"}
       onClick={toggleTry}
+      disabled={flashBusy}
       aria-pressed={mode === "try" || failed}
     >
       <LuPlay size={17} /> try it here
@@ -469,6 +440,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
             type="button"
             className="mk1-btn"
             onClick={() => { setFlashFromBanner(false); setFlashOpen((o) => !o); }}
+            disabled={flashBusy}
             aria-expanded={flashOpen}
           >
             <LuCpu size={17} /> firmware
@@ -530,7 +502,7 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
                 usb={!usbTrouble()}
                 serial={!away}
                 desk={deskOf(os)}
-                onFlashed={() => { reconnect.current = true; }}
+                onBusyChange={setFlashBusy}
               />
             </Unfold>
           )}
@@ -547,7 +519,11 @@ export function Mk1({ firmware = DEFAULT_FIRMWARE, source = DEFAULT_SOURCE }: { 
         <AnimatePresence initial={false}>
           {mode === "card" && boardToken && (
             <Unfold key="board-result">
-              <PublishResult key={boardToken} token={boardToken} />
+              <PublishResult key={boardToken} token={boardToken} signNickname={async (nonce, nickname) => {
+                const current = link.current;
+                if (!current) throw new Error("connect the card to change its nickname");
+                return current.signNickname(nonce, nickname);
+              }} />
             </Unfold>
           )}
         </AnimatePresence>

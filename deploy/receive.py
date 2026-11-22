@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from contextlib import contextmanager
 import fcntl
 import gzip
 import os
@@ -6,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import re
 import shutil
+import signal
 import sys
 import tarfile
 import tempfile
@@ -18,6 +20,7 @@ MAX_UPLOAD = 32 * 1024 * 1024
 MAX_ARCHIVE = 96 * 1024 * 1024
 MAX_MEMBERS = 4096
 CHUNK = 1024 * 1024
+DEPLOY_TIMEOUT = 120
 
 
 def copy_limited(source, destination, limit):
@@ -100,9 +103,14 @@ def activate(directory, name):
     print(f"[{directory.name}] live: {name}")
 
 
+@contextmanager
+def deployment_lock(directory):
+    with (directory / ".deploy.lock").open("a+b") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
 def deploy(directory, releases, sha):
-    name = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f") + "-" + sha[:12]
-    destination = releases / name
     with tempfile.TemporaryDirectory(prefix=".incoming-", dir=releases) as incoming:
         stage = Path(incoming) / "site"
         stage.mkdir()
@@ -113,15 +121,23 @@ def deploy(directory, releases, sha):
                 copy_limited(upload, archive, MAX_ARCHIVE)
             archive.seek(0)
             extract(archive, stage)
-        stage.rename(destination)
-    activate(directory, name)
+        with deployment_lock(directory):
+            name = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f") + "-" + sha[:12]
+            stage.rename(releases / name)
+            activate(directory, name)
 
-    old = [release for release in release_names(releases) if release != name]
-    for release in old[4:]:
-        try:
-            shutil.rmtree(releases / release)
-        except OSError as error:
-            print(f"could not remove {release}: {error}", file=sys.stderr)
+            old = [release for release in release_names(releases) if release != name]
+            for release in old[4:]:
+                try:
+                    shutil.rmtree(releases / release)
+                except TimeoutError:
+                    raise
+                except OSError as error:
+                    print(f"could not remove {release}: {error}", file=sys.stderr)
+
+
+def deploy_timeout(_signal, _frame):
+    raise TimeoutError("deployment deadline exceeded")
 
 
 def receive():
@@ -139,11 +155,16 @@ def receive():
 
     directory = Path(__file__).resolve().parent.parent / branch
     releases = directory / "releases"
-    with (directory / ".deploy.lock").open("a+b") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        if command is not None:
+    if command is not None:
+        signal.signal(signal.SIGALRM, deploy_timeout)
+        signal.setitimer(signal.ITIMER_REAL, DEPLOY_TIMEOUT)
+        try:
             deploy(directory, releases, fields[2])
-        elif local == ["list"]:
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+        return
+    with deployment_lock(directory):
+        if local == ["list"]:
             current = directory / "current"
             live = Path(os.readlink(current)).name if current.is_symlink() else None
             for release in release_names(releases):

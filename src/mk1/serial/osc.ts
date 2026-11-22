@@ -10,10 +10,20 @@ const MAX = 256;
 export type CardMessage =
   /** protocol version, and the firmware's own (MK1_VERSION; a release is tagged v<firmware>) */
   | { kind: "hello"; version: number; firmware: string | null }
+  | { kind: "chip"; id: string }
+  | { kind: "nick"; nonce: string; proof: string }
   | { kind: "frame"; screen: Screen };
 
 export const HELLO = new TextEncoder().encode("\x1b]7777;hello\x07");
 export const BYE = new TextEncoder().encode("\x1b]7777;bye\x07");
+
+export function nicknameRequest(nonce: string, nickname: string): Uint8Array {
+  const name = new TextEncoder().encode(nickname);
+  if (!/^[0-9a-f]{32}$/.test(nonce) || name.length < 1 || name.length > 96)
+    throw new Error("invalid nickname challenge");
+  const hex = Array.from(name, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return new TextEncoder().encode(`\x1b]7777;nick;${nonce};${hex}\x07`);
+}
 
 /** "7777;f;<144 hex>", a level 0..f per LED (protocol 2: what the card's LEDs show), or "7777;f;<36 hex>",
  *  9 rows of the shell's matrix (protocol 1); "7777;mk1;<protocol>[;<firmware>]". anything else is not ours */
@@ -23,8 +33,11 @@ export function parseOsc(body: string): CardMessage | null {
   if (p[1] === "mk1" && (p.length === 3 || p.length === 4)) {
     const version = Number(p[2]);
     const firmware = p.length === 4 && /^\d+\.\d+\.\d+$/.test(p[3]) ? p[3] : null;
-    return Number.isInteger(version) ? { kind: "hello", version, firmware } : null;
+    return version === 1 || version === 2 ? { kind: "hello", version, firmware } : null;
   }
+  if (p[1] === "chip" && p.length === 3 && /^[0-9a-f]{16}$/.test(p[2])) return { kind: "chip", id: p[2] };
+  if (p[1] === "nick" && p.length === 4 && /^[0-9a-f]{32}$/.test(p[2]) && /^[0-9a-f]{64}$/.test(p[3]))
+    return { kind: "nick", nonce: p[2], proof: p[3] };
   if (p[1] !== "f" || p.length !== 3 || !/^[0-9a-f]*$/i.test(p[2])) return null;
   if (p[2].length === LEDS) {
     const screen = dark();

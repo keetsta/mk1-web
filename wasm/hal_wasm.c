@@ -14,7 +14,7 @@ IMPORT("screen") void js_screen(const uint8_t *levels);
 IMPORT("button") int js_button(void);
 IMPORT("lux") uint32_t js_lux(void);
 IMPORT("load") int js_load(void *buf, size_t n);
-IMPORT("save") void js_save(const void *buf, size_t n);
+IMPORT("save") int js_save(const void *buf, size_t n);
 IMPORT("exit") void js_exit(void);
 
 static uint32_t ms;
@@ -28,7 +28,7 @@ uint16_t hal_lux(void) { return (uint16_t)js_lux(); }
 int hal_rows(void) { return 0; } /* xterm.js keeps its own scrollback: no paging */
 void hal_exit(void) { face_exit(); js_exit(); }
 int hal_load(void *buf, size_t n) { return js_load(buf, n); }
-void hal_save(const void *buf, size_t n) { js_save(buf, n); }
+int hal_save(const void *buf, size_t n) { return js_save(buf, n); }
 
 EXPORT("init") void mk1_init(void) {
     face_init(0);

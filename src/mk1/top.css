@@ -243,8 +243,19 @@
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
+.mk1-publish-note {
+  margin-top: 12px;
+  color: var(--muted);
+}
 .mk1-top-board {
   overflow: hidden;
+}
+.mk1-top-pages {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px var(--card-pad);
+  border-top: 1px solid var(--line);
 }
 .mk1-top-board table {
   width: 100%;

@@ -9,14 +9,17 @@ async function boot(connected = true) {
   let out = "";
   const frames: Uint8Array[] = [];
   let saved: Uint8Array | null = null;
-  const t = { btn: false, lux: 512 };
+  const t = { btn: false, lux: 512, failSave: false };
   const shell = await createShell(wasm, {
     write: (b) => { out += new TextDecoder().decode(b); },
     frame: (levels) => frames.push(levels.slice()),
     button: () => t.btn,
     lux: () => t.lux,
     load: () => saved,
-    save: (s) => { saved = s; },
+    save: (s) => {
+      if (t.failSave) throw new Error("storage unavailable");
+      saved = s;
+    },
     exit: () => { out += "<exit>"; },
   });
   const tick = (n = 1) => { for (let i = 0; i < n; i++) shell.tick(); };
@@ -59,13 +62,23 @@ test("a program sees the page's button and light, and the task can be solved", a
   assert.ok(s.saved()!.length > 2000);
 });
 
-test("ctrl-d tells the page, sudo still brings the dragon", async () => {
+test("ctrl-d tells the page, sudo still starts the marquee", async () => {
   const { type, shell, frames } = await boot();
   assert.match(type("\x04"), /bye[\s\S]*<exit>/);
-  assert.match(type("sudo\r"), /<=#  , \*--,/);
+  assert.match(type("sudo\r"), /there will be dragons!/);
   const before = frames.length;
   for (let i = 0; i < 30; i++) shell.tick();
   assert.ok(frames.length > before);
+});
+
+test("a storage error leaves the program usable and reports it was not saved", async () => {
+  const { type, t, saved } = await boot();
+  t.failSave = true;
+  const output = type("edit\rnop\r.\r");
+  assert.match(output, /could not save progress[\s\S]*program in memory, 1 instruction/);
+  assert.doesNotMatch(output, /saved,/);
+  assert.match(type("list\r"), /1\| nop/);
+  assert.equal(saved(), null);
 });
 
 test("the firmware animates boot, shell entry and return to standby", async () => {

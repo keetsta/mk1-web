@@ -1,6 +1,6 @@
 import { MAX_UF2_BYTES } from "./uf2.ts";
 
-export type FirmwareSource = { manifest?: string; github?: string };
+export type FirmwareSource = { github: string };
 
 export type Release = {
   version: string;
@@ -23,8 +23,7 @@ const SEMVER = /^\d+\.\d+\.\d+$/;
 const SHA256 = /^[0-9a-f]{64}$/i;
 const REPOSITORY = /^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/i;
 const GITHUB = "https://github.com";
-const GITHUB_ASSET_ORIGINS = new Set(["https://release-assets.githubusercontent.com", "https://objects.githubusercontent.com"]);
-const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const RAW_GITHUB = "https://raw.githubusercontent.com";
 const METADATA_TIMEOUT_MS = 10_000;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 
@@ -32,22 +31,13 @@ function validSha256(value: unknown): value is string {
   return typeof value === "string" && value.length === 64 && SHA256.test(value);
 }
 
-function trustedUrl(value: unknown, base?: string): URL | null {
-  if (typeof value !== "string" || !value) return null;
+function trustedDownloadUrl(value: string): URL | null {
   try {
-    const url = new URL(value, base);
-    if (url.username || url.password || url.hash) return null;
-    if (url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK.has(url.hostname))) return url;
+    const url = new URL(value);
+    if (url.origin === RAW_GITHUB && !url.username && !url.password && !url.hash && !url.search) return url;
   } catch {
     return null;
   }
-  return null;
-}
-
-function sameOriginPage(value: unknown, manifest: URL, github: string | undefined, version: string): string | null {
-  const page = trustedUrl(value, manifest.href);
-  if (page?.origin === manifest.origin) return page.href;
-  if (github && page?.href === `${GITHUB}/${github}/releases/tag/v${version}`) return page.href;
   return null;
 }
 
@@ -95,89 +85,55 @@ async function readMetadata(response: Response, limit: number): Promise<Record<s
 }
 
 /** the latest release, or null when there is none yet */
-export async function latestRelease(src: FirmwareSource): Promise<Release | null> {
-  const github = src.github && REPOSITORY.test(src.github) && !/\/\.{1,2}$/.test(src.github) ? src.github : undefined;
-  if (src.github && !github) throw new ReleaseError("invalid GitHub release repository");
-  if (src.manifest) {
-    const manifest = trustedUrl(src.manifest, globalThis.location?.href);
-    if (!manifest) throw new ReleaseError("invalid firmware manifest address");
-    const res = await fetch(manifest, {
-      cache: "no-cache",
-      redirect: "error",
-      signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
-    }).catch(() => null);
-    if (res?.ok) {
-      const m = await readMetadata(res, 64 * 1024);
-      const url = trustedUrl(m.url, manifest.href);
-      if (typeof m.version !== "string" || !SEMVER.test(m.version) || !validSha256(m.sha256) ||
-          !url || url.origin !== manifest.origin || !url.pathname.endsWith(".uf2")) {
-        throw new ReleaseError("the release list must include a valid version, a local uf2 and its sha256");
-      }
-      return {
-        version: m.version,
-        date: typeof m.date === "string" ? m.date : null,
-        url: url.href,
-        sha256: m.sha256.toLowerCase(),
-        page: sameOriginPage(m.page, manifest, github, m.version),
-      };
-    }
-    if (res && !res.ok && res.status !== 404) throw new ReleaseError(`the release list didn't load (${res.status})`);
+export async function latestRelease({ github }: FirmwareSource): Promise<Release | null> {
+  if (!REPOSITORY.test(github) || /\/\.{1,2}$/.test(github)) throw new ReleaseError("invalid GitHub release repository");
+
+  const res = await fetch(`https://api.github.com/repos/${github}/releases/latest`, {
+    headers: { Accept: "application/vnd.github+json" },
+    credentials: "omit",
+    redirect: "error",
+    referrerPolicy: "no-referrer",
+    signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
+  }).catch(() => null);
+  if (!res) throw new ReleaseError("GitHub didn't answer");
+  if (res.status === 404) return null;
+  if (!res.ok) throw new ReleaseError(`GitHub said ${res.status}`);
+
+  const rel = await readMetadata(res, 512 * 1024);
+  const tag = typeof rel.tag_name === "string" ? rel.tag_name : "";
+  const version = tag.slice(1);
+  if (!tag.startsWith("v") || !SEMVER.test(version) || rel.draft || rel.prerelease || !Array.isArray(rel.assets)) return null;
+
+  const asset = rel.assets.find((item) => item?.name === "mk1.uf2");
+  if (!asset) return null;
+  const page = `${GITHUB}/${github}/releases/tag/${tag}`;
+  const assetUrl = `${GITHUB}/${github}/releases/download/${tag}/mk1.uf2`;
+  const digest = typeof asset.digest === "string" && asset.digest.startsWith("sha256:") ? asset.digest.slice(7) : "";
+  if (asset.browser_download_url !== assetUrl || !validSha256(digest)) {
+    throw new ReleaseError("the GitHub release does not include a canonical uf2 and its sha256", page);
   }
-  if (github) {
-    const res = await fetch(`https://api.github.com/repos/${github}/releases/latest`, {
-      headers: { Accept: "application/vnd.github+json" },
-      credentials: "omit",
-      redirect: "error",
-      signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
-    }).catch(() => null);
-    if (!res) throw new ReleaseError("GitHub didn't answer");
-    if (res.status === 404) return null; // no release yet, or the repo isn't public
-    if (!res.ok) throw new ReleaseError(`GitHub said ${res.status}`);
-    const rel = await readMetadata(res, 512 * 1024);
-    const tag = typeof rel.tag_name === "string" ? rel.tag_name : "";
-    const version = tag.replace(/^v/, "");
-    if (!SEMVER.test(version) || !Array.isArray(rel.assets)) return null;
-    const versionedName = `mk1-${version}.uf2`;
-    const asset = rel.assets.find((item) => item?.name === versionedName)
-      ?? rel.assets.find((item) => item?.name === "mk1.uf2");
-    if (!asset) return null;
-    const page = `${GITHUB}/${github}/releases/tag/${tag}`;
-    const url = `${GITHUB}/${github}/releases/download/${tag}/${asset.name}`;
-    const digest = typeof asset.digest === "string" && asset.digest.startsWith("sha256:") ? asset.digest.slice(7) : "";
-    if (asset.browser_download_url !== url || !validSha256(digest)) {
-      throw new ReleaseError("the GitHub release does not include a canonical uf2 and its sha256", page);
-    }
-    return {
-      version,
-      date: typeof rel.published_at === "string" ? rel.published_at : null,
-      url,
-      sha256: digest.toLowerCase(),
-      page,
-    };
-  }
-  return null;
+  const sha256 = digest.toLowerCase();
+  return {
+    version,
+    date: typeof rel.published_at === "string" ? rel.published_at : null,
+    url: `${RAW_GITHUB}/${github}/refs/heads/firmware-assets/uf2/${tag}/${sha256}/mk1.uf2`,
+    sha256,
+    page,
+  };
 }
 
 export async function download(rel: Release): Promise<Uint8Array> {
-  const url = trustedUrl(rel.url);
+  const url = trustedDownloadUrl(rel.url);
   if (!url || !validSha256(rel.sha256)) throw new ReleaseError("the firmware download is missing a valid address or sha256", rel.page);
-  const github = url.origin === GITHUB && url.pathname.includes("/releases/download/");
   const signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
-      credentials: github ? "omit" : "same-origin",
-      redirect: github ? "follow" : "error",
+      credentials: "omit",
+      redirect: "error",
       referrerPolicy: "no-referrer",
       signal,
     });
     if (!res.ok) throw new ReleaseError(`the firmware didn't download (${res.status})`, rel.page);
-    if (res.redirected) {
-      const finalUrl = trustedUrl(res.url);
-      if (!github || !finalUrl || !GITHUB_ASSET_ORIGINS.has(finalUrl.origin)) {
-        void res.body?.cancel().catch(() => {});
-        throw new ReleaseError("the firmware redirected to an unexpected address", rel.page);
-      }
-    }
     const bytes = await readLimited(res, MAX_UF2_BYTES, new ReleaseError("the firmware download is too large", rel.page));
     const sum = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
       .map((b) => b.toString(16).padStart(2, "0")).join("");

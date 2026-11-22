@@ -12,6 +12,7 @@ import { chromium, devices } from "playwright-core";
 const out = process.argv[2] ?? "shots";
 const only = process.argv[3];
 const base = process.env.SHOT_URL ?? "http://localhost:4173/";
+const releaseApi = "https://api.github.com/repos/keetsta/mk1-shell/releases/latest";
 const url = (q = "") => `${base}${q}`;
 // headless Chrome has no WebGL of its own: SwiftShader draws the 3D card
 const browser = await chromium.launch({
@@ -22,7 +23,7 @@ const browser = await chromium.launch({
 
 async function page(opts = {}, init) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 1100 }, deviceScaleFactor: 2, ...opts });
-  await ctx.route(/api\.github\.com/, (r) => r.fulfill({ status: 404, body: "{}" }));
+  await ctx.route(releaseApi, (r) => r.fulfill({ status: 404, body: "{}", headers: { "access-control-allow-origin": "*" } }));
   if (init) await ctx.addInitScript(init);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => console.error("page error:", e.message));
@@ -158,19 +159,24 @@ const uf2 = (sectors) => {
   return b;
 };
 const UF2 = uf2(1);
-// the release the site's manifest names, 128 KB of flash, with its sha256 for the page to check
+// 128 KB of flash, with the digest GitHub reports for the release asset
 const RELEASE_UF2 = uf2(32);
+const RELEASE_SHA = createHash("sha256").update(RELEASE_UF2).digest("hex");
 const RELEASE = {
-  version: "0.2.0",
-  date: "2026-11-12",
-  url: "mk1-0.2.0.uf2",
-  sha256: createHash("sha256").update(RELEASE_UF2).digest("hex"),
-  page: "https://github.com/keetsta/mk1-shell/releases/tag/v0.2.0",
+  tag_name: "v0.2.0",
+  published_at: "2026-11-12T12:00:00Z",
+  assets: [{
+    name: "mk1.uf2",
+    browser_download_url: "https://github.com/keetsta/mk1-shell/releases/download/v0.2.0/mk1.uf2",
+    digest: "sha256:" + RELEASE_SHA,
+  }],
 };
 const serveRelease = async (p) => {
-  await p.context().route(/\/mk1\/firmware\/latest\.json$/, (r) => r.fulfill({ json: RELEASE }));
-  await p.context().route(/\/mk1\/firmware\/mk1-0\.2\.0\.uf2$/, (r) =>
-    r.fulfill({ body: RELEASE_UF2, contentType: "application/octet-stream" }));
+  const headers = { "access-control-allow-origin": "*" };
+  await p.context().route(releaseApi, (r) => r.fulfill({ json: RELEASE, headers }));
+  const raw = `https://raw.githubusercontent.com/keetsta/mk1-shell/refs/heads/firmware-assets/uf2/v0.2.0/${RELEASE_SHA}/mk1.uf2`;
+  await p.context().route(raw, (r) =>
+    r.fulfill({ body: RELEASE_UF2, contentType: "application/octet-stream", headers }));
 };
 const FIREFOX = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0";
 
@@ -432,7 +438,7 @@ for (const theme of ["light", "dark"]) {
   await p.locator(".mk1-stage").screenshot({ path: `${out}/${theme}-try-lit.png` });
   await p.keyboard.up(" ");
 
-  // the firmware panel (no release yet: the manifest isn't there and GitHub is stubbed to 404)
+  // the firmware panel before its first GitHub release
   await p.keyboard.press("Control+C");
   await p.getByRole("button", { name: "firmware" }).click();
   await settle(p, 600);

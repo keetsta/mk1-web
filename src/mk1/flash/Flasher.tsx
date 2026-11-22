@@ -20,7 +20,7 @@ export function useLatest(source: FirmwareSource): Latest {
       .then((r) => live && setLatest(r ? { s: "ok", r } : { s: "none" }))
       .catch((e: Error) => live && setLatest({ s: "error", m: e.message }));
     return () => { live = false; };
-  }, [source.manifest, source.github]);
+  }, [source.github]);
   return latest;
 }
 

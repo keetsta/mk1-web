@@ -35,7 +35,7 @@ const saveState = (s: Uint8Array) => {
   localStorage.setItem(STATE, btoa(String.fromCharCode(...s)));
 };
 
-const DEFAULT_FIRMWARE: FirmwareSource = { manifest: "/mk1/firmware/latest.json", github: "keetsta/mk1-shell" };
+const DEFAULT_FIRMWARE: FirmwareSource = { github: "keetsta/mk1-shell" };
 
 /** the page's own source, and the commit this build runs (vite.config.ts defines it; a build that doesn't
  *  shows the repo alone) */

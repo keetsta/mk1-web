@@ -58,6 +58,55 @@
 .mk1-release-card .mono {
   color: var(--ink-2);
 }
+.mk1-release-notes {
+  margin-top: 14px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+.mk1-release-notes-head {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+}
+.mk1-release-notes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.mk1-release-notes-toggle:hover,
+.mk1-release-notes-toggle[aria-expanded="true"] {
+  color: var(--ink);
+}
+.mk1-release-notes-toggle svg {
+  color: var(--muted);
+  transition: transform 260ms var(--ease);
+}
+.mk1-release-notes-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.mk1-release-notes-body {
+  padding-block: 4px 2px;
+  color: var(--ink-2);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.mk1-release-notes-body ul {
+  display: grid;
+  gap: 4px;
+  padding-inline-start: 20px;
+  list-style: disc;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk1-release-notes-toggle svg {
+    transition: none;
+  }
+}
 .mk1-drop {
   display: flex;
   align-items: center;

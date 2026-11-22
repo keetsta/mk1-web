@@ -7,6 +7,7 @@ export type Release = {
   date: string | null;
   url: string;
   sha256: string;
+  notes?: { lines: string[]; truncated: boolean };
   /** where a person can download it by hand */
   page: string | null;
 };
@@ -26,6 +27,8 @@ const GITHUB = "https://github.com";
 const RAW_GITHUB = "https://raw.githubusercontent.com";
 const METADATA_TIMEOUT_MS = 10_000;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
+const MAX_NOTE_LINES = 20;
+const MAX_NOTE_LENGTH = 240;
 
 function validSha256(value: unknown): value is string {
   return typeof value === "string" && value.length === 64 && SHA256.test(value);
@@ -84,6 +87,28 @@ async function readMetadata(response: Response, limit: number): Promise<Record<s
   throw new ReleaseError("the release list is malformed or could not be read");
 }
 
+function releaseNotes(body: unknown): Release["notes"] {
+  if (typeof body !== "string") return;
+  const lines: string[] = [];
+  let truncated = false;
+  for (const text of body.split(/\r\n|\r|\n/)) {
+    const line = text.replace(/^\s*-\s+/, "").trim();
+    if (!line) continue;
+    if (lines.length === MAX_NOTE_LINES) {
+      truncated = true;
+      break;
+    }
+    const chars = Array.from(line);
+    if (chars.length > MAX_NOTE_LENGTH) {
+      lines.push(chars.slice(0, MAX_NOTE_LENGTH - 1).join("") + "…");
+      truncated = true;
+    } else {
+      lines.push(line);
+    }
+  }
+  if (lines.length) return { lines, truncated };
+}
+
 /** the latest release, or null when there is none yet */
 export async function latestRelease({ github }: FirmwareSource): Promise<Release | null> {
   if (!REPOSITORY.test(github) || /\/\.{1,2}$/.test(github)) throw new ReleaseError("invalid GitHub release repository");
@@ -113,12 +138,14 @@ export async function latestRelease({ github }: FirmwareSource): Promise<Release
     throw new ReleaseError("the GitHub release does not include a canonical uf2 and its sha256", page);
   }
   const sha256 = digest.toLowerCase();
+  const notes = releaseNotes(rel.body);
   return {
     version,
     date: typeof rel.published_at === "string" ? rel.published_at : null,
     url: `${RAW_GITHUB}/${github}/refs/heads/firmware-assets/uf2/${tag}/${sha256}/mk1.uf2`,
     sha256,
     page,
+    ...(notes ? { notes } : {}),
   };
 }
 

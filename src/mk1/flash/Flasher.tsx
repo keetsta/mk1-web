@@ -4,6 +4,7 @@ import { EASE, Smooth, Swap, Unfold } from "../anim";
 import { Copyable } from "../help/Copyable";
 import type { Desk } from "../help/platform";
 import { LuCheck, LuCircleAlert, LuCircleDot, LuCpu, LuDownload, LuFileUp, LuLoaderCircle, SiGithub } from "../icons";
+import { Changelog } from "./Changelog";
 import { Picoboot, RP2350_BOOT } from "./picoboot";
 import { download, isNewer, latestRelease, releaseDay, type FirmwareSource, type Release } from "./releases";
 import { MAX_UF2_BYTES, parseUf2, type Image } from "./uf2";
@@ -373,11 +374,7 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
                   <div>
                     <p className="mk1-release-name">
                       latest release{" "}
-                      {rel.page ? (
-                        <a className="mono mk1-link" href={rel.page} target="_blank" rel="noreferrer">{rel.version}</a>
-                      ) : (
-                        <span className="mono">{rel.version}</span>
-                      )}
+                      <span className="mono">{rel.version}</span>
                       {releaseDay(rel.date) && <span className="mk1-release-day"> · {releaseDay(rel.date)}</span>}
                     </p>
                     <p className="mk1-release-card">
@@ -400,6 +397,7 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
             </motion.div>
           </AnimatePresence>
         </Smooth>
+        {rel && <Changelog key={rel.version} release={rel} />}
       </div>
 
       <div

@@ -51,6 +51,47 @@ test("the latest public GitHub release supplies the version and checksum for the
   assert.deepEqual(await latestRelease({ github: repo }), release);
 });
 
+test("release notes keep commit subjects as plain text and skip empty entries", async (t) => {
+  let body: unknown = "\r\n - Tune the light sensor \r\n\r\n- <img src=x> and **literal**\n  Other notes\r\n-   ";
+  t.mock.method(globalThis, "fetch", async () => Response.json({
+    tag_name: "v0.2.0",
+    body,
+    assets: [{ name: "mk1.uf2", browser_download_url: assetUrl, digest: "sha256:" + sha256 }],
+  }));
+  assert.deepEqual((await latestRelease({ github: repo }))?.notes, {
+    lines: ["Tune the light sensor", "<img src=x> and **literal**", "Other notes"],
+    truncated: false,
+  });
+  for (const empty of [null, [], "\n \r\n-  \n"]) {
+    body = empty;
+    const result = await latestRelease({ github: repo });
+    assert.ok(result);
+    assert.equal("notes" in result, false);
+  }
+});
+
+test("release notes cap the preview without splitting Unicode code points", async (t) => {
+  const longSubject = "🌙".repeat(240);
+  const subjects = [longSubject, ...Array.from({ length: 19 }, (_, i) => "Commit " + (i + 1))];
+  t.mock.method(globalThis, "fetch", async () => Response.json({
+    tag_name: "v0.2.0",
+    body: subjects.map((line) => "- " + line).join("\n") + "\n\n",
+    assets: [{ name: "mk1.uf2", browser_download_url: assetUrl, digest: "sha256:" + sha256 }],
+  }));
+  assert.deepEqual((await latestRelease({ github: repo }))?.notes, { lines: subjects, truncated: false });
+  subjects[0] += "x";
+  assert.deepEqual((await latestRelease({ github: repo }))?.notes, {
+    lines: ["🌙".repeat(239) + "…", ...subjects.slice(1)],
+    truncated: true,
+  });
+  subjects[0] = longSubject;
+  subjects.push("Hidden commit");
+  assert.deepEqual((await latestRelease({ github: repo }))?.notes, {
+    lines: subjects.slice(0, 20),
+    truncated: true,
+  });
+});
+
 test("GitHub releases must supply the canonical asset and its checksum", async (t) => {
   const asset = { name: "mk1.uf2", browser_download_url: assetUrl, digest: "sha256:" + sha256 };
   const fetch = t.mock.method(globalThis, "fetch", async () => Response.json({ tag_name: "v0.2.0", assets: [asset] }));

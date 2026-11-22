@@ -3,7 +3,11 @@ import { LuArrowUp } from "../icons";
 import { boardNumber, boardUnavailable, publishBoardResult, type BoardEntry } from "./api";
 import "../top.css";
 
-export function PublishResult({ token, onPublished }: { token: string; onPublished?: (entry: BoardEntry) => void }) {
+export function PublishResult({ token, onPublished, embedded = false }: {
+  token: string;
+  onPublished?: (entry: BoardEntry) => void;
+  embedded?: boolean;
+}) {
   const errorId = useId();
   const [nickname, setNickname] = useState("");
   const [posting, setPosting] = useState(false);
@@ -11,6 +15,7 @@ export function PublishResult({ token, onPublished }: { token: string; onPublish
   const [error, setError] = useState("");
   const name = nickname.trim().normalize("NFC");
   const nameError = [...name].length > 24 ? "keep your nickname to 24 characters." : "";
+  const panel = embedded ? "mk1-publish-form" : "card mk1-publish-form mk1-publish-panel";
 
   const publish = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -31,7 +36,7 @@ export function PublishResult({ token, onPublished }: { token: string; onPublish
 
   if (entry) {
     return (
-      <div className={onPublished ? "mk1-publish-form" : "card mk1-publish-form mk1-inline-publish"}>
+      <div className={panel}>
         <p role="status" className="mk1-top-success">result published · score {boardNumber.format(entry.score)}</p>
         {!onPublished && <a className="mk1-btn" href="/mk1/top/" target="_blank" rel="noreferrer">view leaderboard</a>}
       </div>
@@ -39,12 +44,13 @@ export function PublishResult({ token, onPublished }: { token: string; onPublish
   }
 
   return (
-    <form className={onPublished ? "mk1-publish-form" : "card mk1-publish-form mk1-inline-publish"} onSubmit={publish}>
-      <label className="mk1-top-field mk1-publish-nickname">
-        nickname
+    <form className={panel} onSubmit={publish}>
+      <label className="mk1-publish-nickname">
+        <span className="mk1-publish-label">nickname <small>optional</small></span>
         <input
+          className="mk1-board-input"
           type="text"
-          placeholder="optional"
+          aria-label="nickname"
           autoComplete="off"
           spellCheck={false}
           disabled={posting}

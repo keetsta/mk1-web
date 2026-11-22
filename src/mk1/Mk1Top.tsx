@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { boardNumber, loadBoard, type BoardEntry } from "./board/api";
 import { PublishResult } from "./board/PublishResult";
-import { LuArrowLeft, LuTrophy } from "./icons";
+import { LuArrowLeft, LuChevronDown, LuLink2, LuTrophy } from "./icons";
 import { isBoardToken } from "./serial/board";
 import "./mk1.css";
 import "./top.css";
@@ -119,32 +119,37 @@ export function Mk1Top() {
             </tbody>
           </table>
         )}
-      </div>
-
-      {!hasLinkedToken && (
-        <details className="mk1-top-import" open={hash ? true : undefined}>
-          <summary>submit a result link</summary>
-          <div className="mk1-top-import-body">
-            <label className="mk1-top-field">
-              result link
-              <textarea
-                rows={2}
-                placeholder="run top on your card and paste the link"
+        {!hasLinkedToken && (
+          <details className="mk1-top-import" open={hash ? true : undefined}>
+            <summary>
+              <LuLink2 size={18} aria-hidden="true" />
+              submit with a link
+              <LuChevronDown className="mk1-top-import-chevron" size={18} aria-hidden="true" />
+            </summary>
+            <div className="mk1-top-import-body">
+              <input
+                className="mk1-board-input mk1-result-link"
+                type="text"
+                inputMode="url"
+                aria-label="result link"
+                placeholder="paste the link from top"
                 autoComplete="off"
                 autoCapitalize="off"
+                autoCorrect="off"
                 spellCheck={false}
+                dir="ltr"
                 value={pastedLink}
                 onChange={(event) => setPastedLink(event.target.value)}
               />
-            </label>
-            {isBoardToken(pastedToken) ? (
-              <PublishResult key={pastedToken} token={pastedToken} onPublished={refreshBoard} />
-            ) : (pastedLink.trim() || hash) && (
-              <p role="alert" className="mk1-top-problem">paste the complete result link from top.</p>
-            )}
-          </div>
-        </details>
-      )}
+              {isBoardToken(pastedToken) ? (
+                <PublishResult key={pastedToken} token={pastedToken} onPublished={refreshBoard} embedded />
+              ) : (pastedLink.trim() || hash) && (
+                <p role="alert" className="mk1-top-problem">paste the complete result link from top.</p>
+              )}
+            </div>
+          </details>
+        )}
+      </div>
     </section>
   );
 }

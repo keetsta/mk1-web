@@ -92,6 +92,7 @@ function releaseNotes(body: unknown): Release["notes"] {
   const lines: string[] = [];
   let truncated = false;
   for (const text of body.split(/\r\n|\r|\n/)) {
+    if (text.trim() === "<!-- mk1:license-notices -->") break;
     const line = text.replace(/^\s*-\s+/, "").trim();
     if (!line) continue;
     if (lines.length === MAX_NOTE_LINES) {

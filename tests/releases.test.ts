@@ -92,6 +92,22 @@ test("release notes cap the preview without splitting Unicode code points", asyn
   });
 });
 
+test("release notes stop at the standalone license notices marker", async (t) => {
+  const marker = "<!-- mk1:license-notices -->";
+  const subjects = [marker, ...Array.from({ length: 19 }, (_, i) => "Commit " + (i + 1))];
+  t.mock.method(globalThis, "fetch", async () => Response.json({
+    tag_name: "v0.2.0",
+    body: subjects.map((line) => "- " + line).join("\r\n") + "\r\n \t" + marker + "  \r\n- License notice",
+    assets: [{ name: "mk1.uf2", browser_download_url: assetUrl, digest: "sha256:" + sha256 }],
+  }));
+  assert.deepEqual((await latestRelease({ github: repo }))?.notes, { lines: subjects, truncated: false });
+  subjects.push("Extra commit");
+  assert.deepEqual((await latestRelease({ github: repo }))?.notes, {
+    lines: subjects.slice(0, 20),
+    truncated: true,
+  });
+});
+
 test("GitHub releases must supply the canonical asset and its checksum", async (t) => {
   const asset = { name: "mk1.uf2", browser_download_url: assetUrl, digest: "sha256:" + sha256 };
   const fetch = t.mock.method(globalThis, "fetch", async () => Response.json({ tag_name: "v0.2.0", assets: [asset] }));

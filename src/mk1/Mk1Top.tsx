@@ -140,6 +140,13 @@ export function Mk1Top() {
                 dir="ltr"
                 value={pastedLink}
                 onChange={(event) => setPastedLink(event.target.value)}
+                onPaste={(event) => {
+                  const link = event.clipboardData.getData("text/plain");
+                  if (/[\r\n]/.test(link)) {
+                    event.preventDefault();
+                    setPastedLink(link.replace(/\s+/g, ""));
+                  }
+                }}
               />
               {isBoardToken(pastedToken) ? (
                 <PublishResult key={pastedToken} token={pastedToken} onPublished={refreshBoard} embedded />

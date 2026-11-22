@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { EASE, Smooth, Swap, Unfold } from "../anim";
 import { Copyable } from "../help/Copyable";
 import type { Desk } from "../help/platform";
-import { LuCheck, LuCircleAlert, LuCircleDot, LuCpu, LuDownload, LuFileUp, LuLoaderCircle, SiGithub } from "../icons";
+import { LuCheck, LuCircleAlert, LuCircleDot, LuCpu, LuDownload, LuFileUp, LuLoaderCircle, LuPlay, SiGithub } from "../icons";
 import { Changelog } from "./Changelog";
 import { Picoboot, RP2350_BOOT } from "./picoboot";
 import { download, isNewer, latestRelease, releaseDay, type FirmwareSource, type Release } from "./releases";
@@ -253,6 +253,7 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
   if (onCard && onCard !== seen) setSeen(onCard);
   const card = onCard ?? (busy ? seen : null);
   const rel = latest.s === "ok" ? latest.r : null;
+  const demo = rel?.demo;
   const newer = rel ? isNewer(rel.version, card) : false;
   const same = rel !== null && rel.version === card;
 
@@ -379,7 +380,7 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
                     </p>
                     <p className="mk1-release-card">
                       {card === null ? "connect the card to compare"
-                        : same ? "the card runs it"
+                        : same ? "the card runs this version"
                         : <>the card runs <span className="mono">{card}</span>{newer ? "" : ", a newer one"}</>}
                     </p>
                   </div>
@@ -390,14 +391,29 @@ export function Flasher({ source, latest, onCard, connected, bootloader, usb, se
                     disabled={busy}
                     onClick={() => install(rel.version, () => download(rel), rel)}
                   >
-                    <LuDownload size={17} /> {same ? "install again" : "install"}
+                    <LuDownload size={17} /> install
                   </button>
                 </>
               )}
             </motion.div>
           </AnimatePresence>
         </Smooth>
-        {rel && <Changelog key={rel.version} release={rel} />}
+        {rel && (
+          <Changelog
+            key={rel.version}
+            release={rel}
+            demoAction={demo && (
+              <button
+                type="button"
+                className="mk1-flash-src mk1-release-demo"
+                disabled={busy}
+                onClick={() => install(`mk1-demo-${rel.version}.uf2`, () => download({ ...demo, page: rel.page }), rel)}
+              >
+                <LuPlay size={13} aria-hidden="true" /> load a demo
+              </button>
+            )}
+          />
+        )}
       </div>
 
       <div

@@ -2,11 +2,12 @@ import { MAX_UF2_BYTES } from "./uf2.ts";
 
 export type FirmwareSource = { github: string };
 
-export type Release = {
+type FirmwareAsset = { url: string; sha256: string };
+
+export type Release = FirmwareAsset & {
   version: string;
   date: string | null;
-  url: string;
-  sha256: string;
+  demo?: FirmwareAsset;
   notes?: { lines: string[]; truncated: boolean };
   /** where a person can download it by hand */
   page: string | null;
@@ -110,6 +111,19 @@ function releaseNotes(body: unknown): Release["notes"] {
   if (lines.length) return { lines, truncated };
 }
 
+function releaseAsset(
+  github: string,
+  tag: string,
+  name: "mk1.uf2" | "mk1-demo.uf2",
+  asset: { browser_download_url?: unknown; digest?: unknown } | undefined,
+): FirmwareAsset | null {
+  const canonical = `${GITHUB}/${github}/releases/download/${tag}/${name}`;
+  const digest = typeof asset?.digest === "string" && asset.digest.startsWith("sha256:") ? asset.digest.slice(7) : "";
+  if (asset?.browser_download_url !== canonical || !validSha256(digest)) return null;
+  const sha256 = digest.toLowerCase();
+  return { url: `${RAW_GITHUB}/${github}/refs/heads/firmware-assets/uf2/${tag}/${sha256}/${name}`, sha256 };
+}
+
 /** the latest release, or null when there is none yet */
 export async function latestRelease({ github }: FirmwareSource): Promise<Release | null> {
   if (!REPOSITORY.test(github) || /\/\.{1,2}$/.test(github)) throw new ReleaseError("invalid GitHub release repository");
@@ -133,24 +147,23 @@ export async function latestRelease({ github }: FirmwareSource): Promise<Release
   const asset = rel.assets.find((item) => item?.name === "mk1.uf2");
   if (!asset) return null;
   const page = `${GITHUB}/${github}/releases/tag/${tag}`;
-  const assetUrl = `${GITHUB}/${github}/releases/download/${tag}/mk1.uf2`;
-  const digest = typeof asset.digest === "string" && asset.digest.startsWith("sha256:") ? asset.digest.slice(7) : "";
-  if (asset.browser_download_url !== assetUrl || !validSha256(digest)) {
+  const firmware = releaseAsset(github, tag, "mk1.uf2", asset);
+  if (!firmware) {
     throw new ReleaseError("the GitHub release does not include a canonical uf2 and its sha256", page);
   }
-  const sha256 = digest.toLowerCase();
+  const demo = releaseAsset(github, tag, "mk1-demo.uf2", rel.assets.find((item) => item?.name === "mk1-demo.uf2"));
   const notes = releaseNotes(rel.body);
   return {
+    ...firmware,
     version,
     date: typeof rel.published_at === "string" ? rel.published_at : null,
-    url: `${RAW_GITHUB}/${github}/refs/heads/firmware-assets/uf2/${tag}/${sha256}/mk1.uf2`,
-    sha256,
     page,
+    ...(demo ? { demo } : {}),
     ...(notes ? { notes } : {}),
   };
 }
 
-export async function download(rel: Release): Promise<Uint8Array> {
+export async function download(rel: FirmwareAsset & { page: string | null }): Promise<Uint8Array> {
   const url = trustedDownloadUrl(rel.url);
   if (!url || !validSha256(rel.sha256)) throw new ReleaseError("the firmware download is missing a valid address or sha256", rel.page);
   const signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS);

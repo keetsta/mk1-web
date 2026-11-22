@@ -1,10 +1,10 @@
 import { AnimatePresence } from "motion/react";
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Unfold } from "../anim";
 import { LuArrowUpRight, LuChevronDown } from "../icons";
 import type { Release } from "./releases";
 
-export function Changelog({ release }: { release: Release }) {
+export function Changelog({ release, demoAction }: { release: Release; demoAction?: ReactNode }) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const { notes, page } = release;
@@ -22,8 +22,9 @@ export function Changelog({ release }: { release: Release }) {
         >
           changelog <LuChevronDown size={16} aria-hidden="true" />
         </button>
+        {demoAction}
         {page && (
-          <a className="mk1-flash-src" href={page} target="_blank" rel="noreferrer">
+          <a className="mk1-flash-src mk1-release-page" href={page} target="_blank" rel="noreferrer">
             {notes?.truncated ? "full notes on GitHub" : "GitHub release"} <LuArrowUpRight size={15} aria-hidden="true" />
           </a>
         )}

@@ -51,6 +51,36 @@ test("the latest public GitHub release supplies the version and checksum for the
   assert.deepEqual(await latestRelease({ github: repo }), release);
 });
 
+test("the demo has its own download path and checksum", async (t) => {
+  const demoBytes = new Uint8Array([4, 5, 6]);
+  const demoHash = createHash("sha256").update(demoBytes).digest("hex");
+  const demoUrl = `https://raw.githubusercontent.com/${repo}/refs/heads/firmware-assets/uf2/v0.2.0/${demoHash}/mk1-demo.uf2`;
+  const demoAsset = {
+    name: "mk1-demo.uf2",
+    browser_download_url: `${page.replace("/tag/", "/download/")}/mk1-demo.uf2`,
+    digest: "sha256:" + demoHash,
+  };
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url === api) {
+      return Response.json({
+        tag_name: "v0.2.0",
+        published_at: release.date,
+        assets: [demoAsset, { name: "mk1.uf2", browser_download_url: assetUrl, digest: "sha256:" + sha256 }],
+      });
+    }
+    assert.equal(String(url), demoUrl);
+    return new Response(demoBytes);
+  });
+
+  const latest = await latestRelease({ github: repo });
+  assert.deepEqual(latest, { ...release, demo: { url: demoUrl, sha256: demoHash } });
+  assert.ok(latest?.demo);
+  assert.deepEqual(await download({ ...latest.demo, page }), demoBytes);
+
+  demoAsset.browser_download_url = assetUrl;
+  assert.deepEqual(await latestRelease({ github: repo }), release);
+});
+
 test("release notes keep commit subjects as plain text and skip empty entries", async (t) => {
   let body: unknown = "\r\n - Tune the light sensor \r\n\r\n- <img src=x> and **literal**\n  Other notes\r\n-   ";
   t.mock.method(globalThis, "fetch", async () => Response.json({

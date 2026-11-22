@@ -65,10 +65,18 @@
 }
 .mk1-release-notes-head {
   display: flex;
-  justify-content: space-between;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 14px;
+}
+.mk1-release-demo {
+  min-height: 34px;
+}
+.mk1-release-demo:disabled {
+  opacity: 0.5;
+}
+.mk1-release-page {
+  margin-inline-start: auto;
 }
 .mk1-release-notes-toggle {
   display: inline-flex;
